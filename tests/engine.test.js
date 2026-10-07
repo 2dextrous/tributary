@@ -78,6 +78,19 @@ test('pooling: safety stock in DCs is below city-by-city buffers', () => {
   assert.ok(base.kpi.ssValue < base.kpi.decentralSS);
 });
 
+test('pooling compares like with like: city buffers get the same z and L + R as their DC', () => {
+  const pp = T.prepare(data, fc, { ...L, handlingDays: 10 }), r = T.evaluate(pp, base.open, true);
+  assert.ok(r.dcs.every(d => d.L + d.R !== 2)); // so a fixed √2 protection period would be wrong
+  let expected = 0;
+  for (const d of r.dcs) data.products.forEach((p, k) => {
+    let sdSum = 0; // standard deviations add, share by share, when nothing is pooled
+    for (const l of r.secondaryLanes) if (l.from === d.id) { const i = data.customers.findIndex(c => c.id === l.to); sdSum += l.slotsWk / pp.slots[i] * pp.sig[i][k]; }
+    expected += pp.z * sdSum * Math.sqrt(d.L + d.R) * p.value;
+  });
+  assert.ok(Math.abs(r.kpi.decentralSS / expected - 1) < 1e-9, `${r.kpi.decentralSS} vs ${expected}`);
+  assert.ok(r.kpi.ssValue < r.kpi.decentralSS);
+});
+
 test('dearer freight never makes the plan cheaper', () => {
   assert.ok(T.optimize(data, fc, { ...L, freightIndex: 1.2 }).total > base.total);
 });

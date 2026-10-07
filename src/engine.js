@@ -471,10 +471,16 @@
     const totalSlots = slots.reduce((a, b) => a + b, 0);
     const secTruckKm = slotKmSec / (C.truckCapacity * C.targetFill) * C.ltlCo2Factor;
     const co2 = (primTruckKm + secTruckKm + revTruckKm + revSlotKm / (C.truckCapacity * C.targetFill) * C.ltlCo2Factor) * C.co2PerTruckKm / 1000;
+    // pooling check: the same DCs' safety stock if each demand point's share kept its own buffer,
+    // with its DC's z and L + R, so standard deviations add instead of variances
     let decentral = 0, pooled = 0;
-    for (let k = 0; k < K.length; k++) {
-      for (let i = 0; i < nC; i++) decentral += z * sig[i][k] * Math.sqrt(2) * K[k].value;
-    }
+    dcOut.forEach((d, o) => {
+      for (let k = 0; k < K.length; k++) {
+        let sdSum = 0;
+        for (let i = 0; i < nC; i++) if (gDC[o][i] > 1e-9 && slots[i] > 0) sdSum += gDC[o][i] / slots[i] * sig[i][k];
+        decentral += z * sdSum * Math.sqrt(d.L + d.R) * K[k].value;
+      }
+    });
     for (const r of invRows) pooled += r.ss * K.find(p => p.id === r.sku).value;
     let annualUnits = 0, annualValue = 0;
     for (let i = 0; i < nC; i++) for (let k = 0; k < K.length; k++) { annualUnits += mu[i][k] * 52; annualValue += mu[i][k] * 52 * K[k].value; }
