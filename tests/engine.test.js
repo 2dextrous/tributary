@@ -87,11 +87,14 @@ test('higher service target holds more safety stock', () => {
   assert.ok(hi.kpi.ssValue > base.kpi.ssValue);
 });
 
-test('simulation agrees with the inventory formulas within 5% and meets the target', () => {
+test('simulation agrees with the inventory formulas: stock within 5%, stockouts as the cycle service level predicts', () => {
   const s = T.simulate(data, fc, L, base, { reps: 30 });
   const formula = base.kpi.ssValue + base.kpi.cycleValue;
   assert.ok(Math.abs(s.avgInventory - formula) / formula < 0.05, `${s.avgInventory} vs ${formula}`);
-  assert.ok(s.fillRate >= L.serviceLevel);
+  // the lever is a cycle service level, not a fill rate: each order cycle runs short with chance 1 − target
+  let short = 0, expected = 0;
+  s.perDC.forEach((d, o) => d.skus.forEach(x => { short += x.stockoutWeeks; expected += 52 / base.dcs[o].R * (1 - L.serviceLevel); }));
+  assert.ok(Math.abs(short / expected - 1) < 0.25, `${short} weeks short vs ${expected} expected`);
 });
 
 test('rerouting during a plant outage protects fill rate', () => {

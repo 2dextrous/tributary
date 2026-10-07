@@ -41,7 +41,7 @@
     { key: 'dcFixedIndex', group: 'Costs', label: 'DC rent and staff', hint: 'Fixed cost of running each DC compared with today', min: 0.4, max: 2.5, step: 0.05, fmt: idxFmt, disp: 100, unit: '% of today' },
     { key: 'demandGrowth', group: 'Market', label: 'Demand vs forecast', hint: 'Shift every forecast up or down', min: -0.4, max: 0.8, step: 0.05, fmt: v => (v >= 0 ? '+' : '−') + Math.round(Math.abs(v) * 100) + '%', disp: 100, unit: '%' },
     { key: 'returnIndex', group: 'Market', label: 'Return rate', hint: "Multiplier on each product's return rate", min: 0.25, max: 3, step: 0.05, fmt: v => '×' + v.toFixed(2), disp: 1, unit: '×' },
-    { key: 'serviceLevel', group: 'Service', label: 'Service level target', hint: 'Chance a DC does not run out before its next delivery', min: 0.8, max: 0.995, step: 0.005, fmt: v => (v * 100).toFixed(1) + '%', disp: 100, unit: '%' },
+    { key: 'serviceLevel', group: 'Service', label: 'Cycle service level target', hint: 'Chance a DC gets through an order cycle without running short. Fill rate, the share of demand served, runs higher', min: 0.8, max: 0.995, step: 0.005, fmt: v => (v * 100).toFixed(1) + '%', disp: 100, unit: '%' },
     { key: 'maxServiceKm', group: 'Service', label: 'Max delivery distance', hint: 'Furthest a DC may ship to a customer, by road', min: 400, max: 2500, step: 50, fmt: v => n0(v) + ' km', disp: 1, unit: 'km' },
     { key: 'handlingDays', group: 'Service', label: 'Handling time', hint: 'Plant dispatch plus DC receiving, in days', min: 1, max: 10, step: 1, fmt: v => v + (v === 1 ? ' day' : ' days'), disp: 1, unit: 'days' }
   ];
@@ -831,7 +831,8 @@
     const v = el('div', { class: 'panel span-5' }); g.append(v); v.append(el('h3', { text: 'Does the model agree with itself?' }));
     const formula = r.kpi.ssValue + r.kpi.cycleValue; const gap = (s.avgInventory - formula) / formula;
     v.append(el('p', { class: 'lead', html: `The formulas say DCs should average <b>${inr(formula)}</b> of stock (safety plus cycle). The simulation averaged <b>${inr(s.avgInventory)}</b>, a gap of ${pct(Math.abs(gap), 1)}. ${Math.abs(gap) < 0.05 ? 'Close agreement: the inventory maths holds up under random demand.' : 'A gap this size usually means seasonality or an outage the formulas do not see.'}` }));
-    v.append(el('p', { class: 'lead', text: `A ${pct(target, 1)} service target means a DC should run short in about ${(52 * (1 - target)).toFixed(1)} weeks a year per product. The simulation shows ${avgSO.toFixed(1)}.` }));
+    const expSO = r.dcs.reduce((a, d) => a + 52 / d.R * (1 - target), 0) / Math.max(1, r.dcs.length);
+    v.append(el('p', { class: 'lead', text: `A ${pct(target, 1)} cycle service level means each order cycle runs short with a ${pct(1 - target, 1)} chance, about ${expSO.toFixed(1)} weeks a year per DC and product. The simulation shows ${avgSO.toFixed(1)}. Fill rate sits above the service level because a short week usually misses only a small part of that week's demand.` }));
   };
 
   /* ---------- Compare ---------- */
@@ -1181,9 +1182,10 @@ last-mile ₹/lu = (rate × road km + drop charge)        road km = straight-lin
 <p>Each design is then costed in full, including the parts a flow model cannot see because they are non-linear: safety stock pooling, truck rounding, ordering and returns. The cheapest total wins. Because the search is exhaustive, the answer is the true optimum of this model, and the runner-up designs show how flat the cost surface is near the top.</p>
 <h3>4. Inventory</h3>
 <p>Each DC reviews stock every R weeks and orders up to a level that covers the lead time L plus R, plus safety stock. Demand pooled at a DC adds in means, and its errors add in variance, which is the square-root law at work:</p>
-<span class="formula">σ_DC = √(Σ share² × σ_city²)        SS = z × σ_DC × √(L + R)        z = Φ⁻¹(service level)
+<span class="formula">σ_DC = √(Σ share² × σ_city²)        SS = z × σ_DC × √(L + R)        z = Φ⁻¹(cycle service level)
 cycle stock = demand × R ÷ 2        in-transit stock = demand × transit days ÷ 7
 holding cost = (SS + cycle + in transit) × value × holding rate</span>
+<p>The service lever is a cycle service level: the chance that demand over L + R stays within the order-up-to level, so an order cycle ends without running short. At 95%, about one cycle in 20 has a stockout. The simulation reports fill rate, which is a different measure: the share of demand served from stock. Fill rate runs higher than the cycle service level because a cycle that runs short usually misses only a small part of its demand. A fill rate well above the target is the policy working as designed, not overstocking.</p>
 <p>L is transit days plus handling days, rounded up to whole weeks. R (1 to 4 weeks) is chosen per DC to minimise cycle holding plus trucking plus ordering cost, so a higher holding rate pushes towards smaller, more frequent shipments.</p>
 <h3>5. Transport</h3>
 <p>Line-haul is costed truck by truck: each shipment of R weeks of volume needs ⌈volume ÷ capacity⌉ trucks, so half-empty trucks cost what they really cost. CO₂ is a planning estimate: truck-km × kg per km, with last-mile scaled by a load factor.</p>
