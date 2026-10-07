@@ -603,7 +603,7 @@
             const it = items[a.x], qb = a.q * share[it.b], qw = a.q - qb;
             if (qb > 0) {
               add(pipeline[a.x], t + it.Lb, qb); used[it.b] += qb * it.p.cube;
-              if (rep === 0) { rerouted += qb; expediteCost += qb * it.p.cube * it.premium; }
+              rerouted += qb / reps; expediteCost += qb * it.p.cube * it.premium / reps;
             }
             if (qw > 0) add(pipeline[a.x], oEnd + it.Lw, qw);
           }

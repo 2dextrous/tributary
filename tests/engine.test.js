@@ -100,3 +100,14 @@ test('a backup plant can only reroute what it has spare', () => {
   assert.equal(none.rerouted, 0);
   assert.ok(wait.fillRate < tight.fillRate && tight.fillRate < roomy.fillRate, `${wait.fillRate} < ${tight.fillRate} < ${roomy.fillRate}`);
 });
+
+test('outage reroute volume and extra freight are averages over all runs', () => {
+  const lv = { ...L, outage: { plantId: 'P3', startWeek: 10, weeks: 4 }, reroute: true };
+  const one = T.simulate(data, fc, lv, base, { reps: 1 }), many = T.simulate(data, fc, lv, base, { reps: 20 });
+  // run 1 is the same in both, so equal numbers would mean only run 1 was counted
+  assert.notEqual(many.rerouted, one.rerouted);
+  assert.notEqual(many.expediteCost, one.expediteCost);
+  // and an average stays on the scale of a single run, where a sum would be 20 times bigger
+  assert.ok(Math.abs(many.rerouted / one.rerouted - 1) < 0.25, `${many.rerouted} vs ${one.rerouted}`);
+  assert.ok(Math.abs(many.expediteCost / one.expediteCost - 1) < 0.25, `${many.expediteCost} vs ${one.expediteCost}`);
+});
