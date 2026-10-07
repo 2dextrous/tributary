@@ -194,22 +194,44 @@
 
   /* ---------------- forecasting ---------------- */
   const PHI = 0.98;
-  function holtRun(y, s, woyH, alpha, beta, H, collect) {
+  // Holt's damped trend on de-seasonalised demand over weeks [0, n); sse scores one-week-ahead errors from week 13
+  function holtRun(y, s, woyH, alpha, beta, n) {
     const d0 = []; for (let t = 0; t < 8; t++) d0.push(y[t] / Math.max(s[woyH(t)], 0.05));
     let l = d0.reduce((a, b) => a + b, 0) / 8, b = 0, sse = 0;
-    const pred = collect ? new Float64Array(H) : null;
-    for (let t = 0; t < H; t++) {
+    for (let t = 0; t < n; t++) {
       const st = Math.max(s[woyH(t)], 0.05);
       const p = Math.max(0, (l + PHI * b) * st);
       const e = y[t] - p;
       if (t >= 13) sse += e * e;
-      if (collect) pred[t] = p;
       const dt = y[t] / st;
       const ln = alpha * dt + (1 - alpha) * (l + PHI * b);
       b = beta * (ln - l) + (1 - beta) * PHI * b;
       l = ln;
     }
-    return { l, b, sse, pred };
+    return { l, b, sse };
+  }
+  // grid search on weeks [0, n): the smoothing constants with the lowest error, and the level and trend they end on
+  function fitHolt(y, s, woyH, n) {
+    let best = null;
+    for (const a of [0.05, 0.1, 0.2, 0.35]) for (const bt of [0, 0.03, 0.08]) {
+      const r = holtRun(y, s, woyH, a, bt, n);
+      if (!best || r.sse < best.sse) best = { a, bt, sse: r.sse, l: r.l, b: r.b };
+    }
+    return best;
+  }
+  // seasonal indices from national sales A over weeks [0, n): ratio to a fitted straight-line trend,
+  // averaged by week of year, smoothed 1-2-3-2-1 and scaled to average 1
+  function seasonFrom(A, n, woyH) {
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let t = 0; t < n; t++) { sx += t; sy += A[t]; sxx += t * t; sxy += t * A[t]; }
+    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx || 1), icpt = (sy - slope * sx) / n;
+    const rs = new Float64Array(52), rc = new Float64Array(52);
+    for (let t = 0; t < n; t++) { const tr = icpt + slope * t; if (tr > 0) { rs[woyH(t)] += A[t] / tr; rc[woyH(t)]++; } }
+    const raw = new Float64Array(52); for (let w = 0; w < 52; w++) raw[w] = rc[w] ? rs[w] / rc[w] : 1;
+    const s = new Float64Array(52), wts = [1, 2, 3, 2, 1];
+    for (let w = 0; w < 52; w++) { let acc = 0; for (let k = -2; k <= 2; k++) acc += wts[k + 2] * raw[mod52(w + k)]; s[w] = acc / 9; }
+    let m = 0; for (let w = 0; w < 52; w++) m += s[w]; m /= 52; for (let w = 0; w < 52; w++) s[w] /= m;
+    return s;
   }
 
   T.forecast = function (data) {
@@ -222,34 +244,27 @@
     for (const p of data.products) {
       const A = new Float64Array(H);
       for (const c of data.customers) { const y = data.history[c.id][p.id]; for (let t = 0; t < H; t++) A[t] += y[t]; }
-      let sx = 0, sy = 0, sxx = 0, sxy = 0;
-      for (let t = 0; t < H; t++) { sx += t; sy += A[t]; sxx += t * t; sxy += t * A[t]; }
-      const slope = (H * sxy - sx * sy) / (H * sxx - sx * sx || 1), icpt = (sy - slope * sx) / H;
-      const rs = new Float64Array(52), rc = new Float64Array(52);
-      for (let t = 0; t < H; t++) { const tr = icpt + slope * t; if (tr > 0) { rs[woyH(t)] += A[t] / tr; rc[woyH(t)]++; } }
-      const raw = new Float64Array(52); for (let w = 0; w < 52; w++) raw[w] = rc[w] ? rs[w] / rc[w] : 1;
-      const s = new Float64Array(52), wts = [1, 2, 3, 2, 1];
-      for (let w = 0; w < 52; w++) { let acc = 0; for (let k = -2; k <= 2; k++) acc += wts[k + 2] * raw[mod52(w + k)]; s[w] = acc / 9; }
-      let m = 0; for (let w = 0; w < 52; w++) m += s[w]; m /= 52; for (let w = 0; w < 52; w++) s[w] /= m;
+      const s = seasonFrom(A, H, woyH);
       res.seasonal[p.id] = s;
+      // rolling origin: the seasonality used to forecast week t is fitted on the weeks before t only
+      const sAt = []; for (let t = evalFrom; t < H; t++) sAt[t] = seasonFrom(A, t, woyH);
 
       let absS = 0, absN = 0, sumY = 0, biasS = 0, biasN = 0;
       for (const c of data.customers) {
         const y = data.history[c.id][p.id];
-        let best = null;
-        for (const a of [0.05, 0.1, 0.2, 0.35]) for (const bt of [0, 0.03, 0.08]) {
-          const r = holtRun(y, s, woyH, a, bt, H, false);
-          if (!best || r.sse < best.sse) best = { a, bt, sse: r.sse };
-        }
-        const run = holtRun(y, s, woyH, best.a, best.bt, H, true);
+        // the year ahead is forecast from a fit on the full history
+        const best = fitHolt(y, s, woyH, H);
         const fcS = new Float64Array(52), fcN = new Float64Array(52);
         let cum = 0, ph = 1;
-        for (let h = 0; h < 52; h++) { ph *= PHI; cum += ph; fcS[h] = Math.max(0, (run.l + cum * run.b) * s[woyF(h)]); fcN[h] = y[H - 52 + h]; }
+        for (let h = 0; h < 52; h++) { ph *= PHI; cum += ph; fcS[h] = Math.max(0, (best.l + cum * best.b) * s[woyF(h)]); fcN[h] = y[H - 52 + h]; }
+        // accuracy and sigma are out of sample: each scored week is forecast one step ahead by a model refitted on the weeks before it
         let eS2 = 0, eN2 = 0, n = 0, aS = 0, aN = 0, bS = 0, bN = 0, yy = 0;
-        const predN = new Float64Array(H);
+        const predS = new Float64Array(H).fill(NaN), predN = new Float64Array(H);
         for (let t = 0; t < H; t++) predN[t] = t >= 52 ? y[t - 52] : NaN;
         for (let t = evalFrom; t < H; t++) {
-          const es = y[t] - run.pred[t], en = y[t] - predN[t];
+          const st = sAt[t], f = fitHolt(y, st, woyH, t);
+          predS[t] = Math.max(0, (f.l + PHI * f.b) * Math.max(st[woyH(t)], 0.05));
+          const es = y[t] - predS[t], en = y[t] - predN[t];
           eS2 += es * es; eN2 += en * en; n++; aS += Math.abs(es); aN += Math.abs(en); bS += -es; bN += -en; yy += y[t];
         }
         const key = c.id + '|' + p.id;
@@ -258,7 +273,7 @@
           sigma: { smart: Math.sqrt(eS2 / Math.max(1, n)), naive: Math.sqrt(eN2 / Math.max(1, n)) },
           wmape: { smart: yy ? aS / yy : 0, naive: yy ? aN / yy : 0 },
           bias: { smart: yy ? bS / yy : 0, naive: yy ? bN / yy : 0 },
-          pred: { smart: run.pred, naive: predN },
+          pred: { smart: predS, naive: predN },
           params: { alpha: best.a, beta: best.bt }
         };
         absS += aS; absN += aN; sumY += yy; biasS += bS; biasN += bN;

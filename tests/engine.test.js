@@ -42,6 +42,19 @@ test('smart forecast beats "same week last year" on every product', () => {
   }
 });
 
+test('forecast errors and σ are out of sample: a week never helps forecast itself', () => {
+  const H = data.meta.weeksHistory, s = fc.series['C1|K1'], y = data.history.C1.K1;
+  // σ is the root mean square of the scored one-week-ahead errors
+  let e2 = 0, n = 0;
+  for (let t = fc.evalFrom; t < H; t++) { const e = y[t] - s.pred.smart[t]; e2 += e * e; n++; }
+  assert.ok(Math.abs(Math.sqrt(e2 / n) - s.sigma.smart) < 1e-9);
+  // change the last week's actual: its forecast must not move, only its error
+  const d2 = JSON.parse(JSON.stringify(data)); d2.history.C1.K1[H - 1] += 500;
+  const s2 = T.forecast(d2).series['C1|K1'];
+  assert.equal(s2.pred.smart[H - 1], s.pred.smart[H - 1]);
+  assert.ok(s2.sigma.smart > s.sigma.smart);
+});
+
 test('cost components add up to the total', () => {
   const sum = Object.values(base.comp).reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(sum - base.total) < 1);

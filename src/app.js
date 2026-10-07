@@ -639,7 +639,7 @@
   TABS.forecast = (p) => {
     const D = App.data, fc = App.fc; if (!App.fcSel.sku || !D.products.find(x => x.id === App.fcSel.sku)) App.fcSel.sku = D.products[0].id;
     if (App.fcSel.loc !== 'ALL' && !D.customers.find(c => c.id === App.fcSel.loc)) App.fcSel.loc = 'ALL';
-    head(p, 'Forecast', 'Weekly demand history for each product and place, and the forecast the network is planned on. Accuracy is measured one week ahead over the last 52 weeks.');
+    head(p, 'Forecast', 'Weekly demand history for each product and place, and the forecast the network is planned on. Accuracy is measured one week ahead over the last 52 weeks, each week forecast by a model fitted only on the weeks before it.');
     const sku = App.fcSel.sku, loc = App.fcSel.loc;
     p.append(el('div', { class: 'controls' },
       field('Product', selectEl(D.products.map(x => [x.id, x.name]), sku, v => { App.fcSel.sku = v; renderTab(); })),
@@ -1173,7 +1173,7 @@
 <h3>2. Forecasting</h3>
 <p>Seasonality is estimated top-down: national weekly sales are divided by a fitted linear trend, averaged by week of year, smoothed, and scaled to average 1. Each demand point is then de-seasonalised and forecast with Holt's method (level and damped trend), with the smoothing constants picked per series by grid search.</p>
 <span class="formula">forecast(h) = (level + (φ + φ² + … + φʰ) × trend) × season(week)        φ = 0.98</span>
-<p>The comparison model is last year's same week. Accuracy is one-step-ahead over the last 52 weeks: WMAPE = Σ|error| / Σ actual, bias = Σ(forecast − actual) / Σ actual. The standard deviation of these errors (σ) is what sets safety stock, which is how a better forecast turns into less inventory and money.</p>
+<p>The comparison model is last year's same week. Accuracy is tested out of sample on a rolling origin. For each of the last 52 weeks, the seasonality and smoothing constants are refitted on the weeks before it only, and that week is forecast one step ahead, as it would have been at the time. Last year's same week is scored on the same weeks. WMAPE = Σ|error| / Σ actual, bias = Σ(forecast − actual) / Σ actual. The standard deviation of these out-of-sample errors (σ) sets safety stock, so buffers are sized on the errors the forecast really makes, not on how well it fits weeks it has already seen. This is how a better forecast turns into less inventory and money. The forecast for the year ahead is then fitted on the full history.</p>
 <h3>3. Network design</h3>
 <p>Every combination of candidate DCs is evaluated (2ⁿ − 1 designs for n free DCs). For each design, goods are routed by a min-cost flow model: plants to DCs to demand points, respecting plant and DC capacity, with a lost-sale arc so the problem is always solvable. Flows minimise plant dispatch, line-haul, handling and last-mile cost.</p>
 <span class="formula">line-haul ₹/lu = truck rate × road km ÷ (truck capacity × planning fill)
