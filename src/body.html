@@ -1,0 +1,74 @@
+<header class="topbar" id="topbar">
+  <div class="brand"><b>Tributary</b><span>Supply chain twin</span></div>
+  <div class="scen">
+    <span class="scen-name" id="scenName">Working draft</span>
+    <span class="status" id="status" aria-live="polite">Starting up</span>
+  </div>
+  <div class="top-actions">
+    <button class="btn quiet" id="btnPin" type="button">Pin as scenario</button>
+    <button class="btn quiet" id="btnBaseline" type="button">Make baseline</button>
+    <button class="btn primary" id="btnCopilot" type="button" aria-controls="drawer" aria-expanded="false">Copilot</button>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-label="Network chart and scenario levers">
+    <div class="hero-left">
+      <div class="cartouche" id="cartouche" aria-live="polite"></div>
+      <div class="vitals" id="vitals"></div>
+      <div class="legend" aria-label="Map key">
+        <span><i class="sw plant"></i>Plant</span>
+        <span><i class="sw dc"></i>DC in use</span>
+        <span><i class="sw dcx"></i>DC candidate</span>
+        <span><i class="sw cust"></i>Demand point</span>
+        <span><i class="sw flowline"></i>Goods flow</span>
+        <span><i class="sw ret"></i>Returns</span>
+      </div>
+    </div>
+    <div class="mapwrap" id="mapwrap">
+      <canvas id="map" aria-label="Map of plants, distribution centres, demand points and flows"></canvas>
+      <div class="tip" id="tip" hidden></div>
+      <div class="maphint">Click a DC to lock it open or closed</div>
+    </div>
+    <aside class="levers" id="levers" aria-label="Scenario levers"></aside>
+  </section>
+
+  <section class="bench">
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="forecast" aria-selected="true">Forecast</button>
+      <button role="tab" data-tab="network" aria-selected="false">Network</button>
+      <button role="tab" data-tab="inventory" aria-selected="false">Inventory</button>
+      <button role="tab" data-tab="transport" aria-selected="false">Transport</button>
+      <button role="tab" data-tab="returns" aria-selected="false">Returns</button>
+      <button role="tab" data-tab="simulate" aria-selected="false">Simulate</button>
+      <button role="tab" data-tab="compare" aria-selected="false">Compare</button>
+      <button role="tab" data-tab="sweep" aria-selected="false">Sweep</button>
+      <button role="tab" data-tab="data" aria-selected="false">Your data</button>
+      <button role="tab" data-tab="method" aria-selected="false">How it works</button>
+    </div>
+    <div class="tabpanel" id="tabpanel" role="tabpanel"></div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Copilot">
+  <div class="drawer-head">
+    <div>
+      <h2>Copilot</h2>
+      <div class="st" id="cpStatus">Checking Claude access</div>
+    </div>
+    <button class="btn small quiet" id="cpClose" type="button">Close</button>
+  </div>
+  <div class="cp-log" id="cpLog" aria-live="polite"></div>
+  <div class="cp-chips" id="cpChips"></div>
+  <div class="cp-input">
+    <textarea id="cpInput" rows="2" placeholder="Ask a what-if. For example: diesel goes up 15% and Manesar shuts for a month"></textarea>
+    <button class="btn primary" id="cpSend" type="button">Send</button>
+    <button class="btn quiet" id="cpStop" type="button" hidden>Stop</button>
+  </div>
+  <details class="audit">
+    <summary>Decision log</summary>
+    <ol id="auditList"></ol>
+  </details>
+</aside>
+<div class="toast" id="toast" role="status"></div>
