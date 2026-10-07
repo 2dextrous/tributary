@@ -547,56 +547,77 @@
       P.forEach((p, q) => { if (q === pr) return; if (pp.prim[q][j] < bc) { bc = pp.prim[q][j]; b = q; } });
       return b;
     });
+    // spare capacity of each plant: what it can make in a week minus its average weekly flow in this design (lu/week)
+    const spare = P.map(p => Math.max(0, p.capacity - net.primaryLanes.filter(l => l.from === p.id).reduce((a, l) => a + l.slotsWk, 0)));
+    // one line per DC x SKU with demand, in DC then SKU order
+    const items = [];
+    dcs.forEach((d, o) => {
+      const pr = plantIdx(d.primaryPlant), b = backup[o];
+      const Lb = b >= 0 ? Math.max(1, Math.ceil((pp.kmPD[b][d.idx] / C.speedKmDay + levers.handlingDays) / 7)) : 0;
+      const premium = b >= 0 ? Math.max(0, pp.prim[b][d.idx] - pp.prim[pr][d.idx]) : 0;
+      K.forEach((p, k) => {
+        const m = mWeek[o][k]; let mbar = 0; for (let h = 0; h < 52; h++) mbar += m[h]; mbar /= 52;
+        if (mbar <= 1e-9) return;
+        items.push({ o, k, p, m, mbar, sigma: d.sgK[k], Lw: d.L, R: d.R, pr, b, Lb, premium });
+      });
+    });
+    const mAt = (it, t) => it.m[mod52(t)];
+    const ssAt = (it, t) => z * it.sigma * Math.sqrt(it.Lw + it.R) * (levers.seasonalBuffers ? Math.max(0.35, mAt(it, t) / it.mbar) : 1);
+    const S = (it, t) => { let a = 0; for (let tau = t; tau < t + it.Lw + it.R; tau++) a += mAt(it, tau); return a + ssAt(it, t); };
+    const add = (pl, at, q) => pl.set(at, (pl.get(at) || 0) + q);
     const nW = weeks;
     const invVal = Array.from({ length: nW }, () => []), fillW = Array.from({ length: nW }, () => []);
     const dcStats = dcs.map(() => K.map(() => ({ served: 0, demand: 0, inv: 0, stockoutWeeks: 0 })));
     let expediteCost = 0, rerouted = 0;
     for (let rep = 0; rep < reps; rep++) {
       const wkInv = new Float64Array(nW), wkServed = new Float64Array(nW), wkDem = new Float64Array(nW);
-      dcs.forEach((d, o) => {
-        const pr = plantIdx(d.primaryPlant), Lw = d.L, R = d.R;
-        K.forEach((p, k) => {
-          const m = mWeek[o][k]; let mbar = 0; for (let h = 0; h < 52; h++) mbar += m[h]; mbar /= 52;
-          const sigma = d.sgK[k]; if (mbar <= 1e-9) return;
-          const mAt = (t) => m[mod52(t)];
-          const ssAt = (t) => z * sigma * Math.sqrt(Lw + R) * (levers.seasonalBuffers ? Math.max(0.35, mAt(t) / mbar) : 1);
-          const S = (t) => { let a = 0; for (let tau = t; tau < t + Lw + R; tau++) a += mAt(tau); return a + ssAt(t); };
-          let onHand = S(-warm); const pipeline = new Map();
-          for (let t = -warm; t < nW; t++) {
-            if (pipeline.has(t)) { onHand += pipeline.get(t); pipeline.delete(t); }
-            if (((t + warm) % R) === 0) {
-              let onOrder = 0; for (const v of pipeline.values()) onOrder += v;
-              const q = Math.max(0, S(t) - onHand - onOrder);
-              if (q > 0) {
-                let arrive = t + Lw;
-                const plantDown = downIdx >= 0 && pr === downIdx && t >= oStart && t < oEnd;
-                if (plantDown) {
-                  if (levers.reroute && backup[o] >= 0) {
-                    const b = backup[o]; const km = pp.kmPD[b][d.idx];
-                    const Lb = Math.max(1, Math.ceil((km / C.speedKmDay + levers.handlingDays) / 7));
-                    arrive = t + Lb;
-                    if (rep === 0) { rerouted += q; expediteCost += q * p.cube * Math.max(0, pp.prim[b][d.idx] - pp.prim[pr][d.idx]); }
-                  } else {
-                    arrive = oEnd + Lw;
-                  }
-                }
-                pipeline.set(arrive, (pipeline.get(arrive) || 0) + q);
-              }
+      // draw this run's demand first, in DC, SKU, week order, so it never depends on the stock policy
+      const dem = items.map(it => {
+        const a = new Float64Array(warm + nW);
+        for (let t = -warm; t < nW; t++) { const mean = mAt(it, t), sd = it.sigma * Math.max(0.35, mean / it.mbar); a[t + warm] = Math.max(0, mean + sd * norm()); }
+        return a;
+      });
+      const onHand = items.map(it => S(it, -warm)), pipeline = items.map(() => new Map());
+      const used = new Float64Array(P.length); // lu rerouted to each backup plant so far in this run
+      for (let t = -warm; t < nW; t++) {
+        const asks = [];
+        items.forEach((it, x) => {
+          const pl = pipeline[x];
+          if (pl.has(t)) { onHand[x] += pl.get(t); pl.delete(t); }
+          if (((t + warm) % it.R) !== 0) return;
+          let onOrder = 0; for (const v of pl.values()) onOrder += v;
+          const q = Math.max(0, S(it, t) - onHand[x] - onOrder);
+          if (q <= 0) return;
+          const plantDown = downIdx >= 0 && it.pr === downIdx && t >= oStart && t < oEnd;
+          if (!plantDown) add(pl, t + it.Lw, q);
+          else if (levers.reroute && it.b >= 0) asks.push({ x, q });
+          else add(pl, oEnd + it.Lw, q);
+        });
+        if (asks.length) {
+          // a backup plant ships at most the spare capacity built up since the outage began;
+          // this week's rerouted orders share what is left in proportion to size, the rest waits for the restart
+          const want = new Float64Array(P.length);
+          for (const a of asks) want[items[a.x].b] += a.q * items[a.x].p.cube;
+          const share = P.map((_, b) => want[b] > 0 ? Math.min(1, Math.max(0, spare[b] * (t - oStart + 1) - used[b]) / want[b]) : 0);
+          for (const a of asks) {
+            const it = items[a.x], qb = a.q * share[it.b], qw = a.q - qb;
+            if (qb > 0) {
+              add(pipeline[a.x], t + it.Lb, qb); used[it.b] += qb * it.p.cube;
+              if (rep === 0) { rerouted += qb; expediteCost += qb * it.p.cube * it.premium; }
             }
-            const mean = mAt(t);
-            const sd = sigma * Math.max(0.35, mean / mbar);
-            const dem = Math.max(0, mean + sd * norm());
-            const startOH = onHand;
-            const served = Math.min(onHand, dem);
-            onHand -= served;
-            if (t >= 0) {
-              const avgOH = (startOH + onHand) / 2;
-              wkInv[t] += avgOH * p.value; wkServed[t] += served * p.value; wkDem[t] += dem * p.value;
-              const st = dcStats[o][k]; st.served += served; st.demand += dem; st.inv += avgOH; if (served < dem - 1e-6) st.stockoutWeeks++;
-            }
+            if (qw > 0) add(pipeline[a.x], oEnd + it.Lw, qw);
+          }
+        }
+        items.forEach((it, x) => {
+          const d = dem[x][t + warm], startOH = onHand[x], served = Math.min(startOH, d);
+          onHand[x] = startOH - served;
+          if (t >= 0) {
+            const avgOH = (startOH + onHand[x]) / 2;
+            wkInv[t] += avgOH * it.p.value; wkServed[t] += served * it.p.value; wkDem[t] += d * it.p.value;
+            const st = dcStats[it.o][it.k]; st.served += served; st.demand += d; st.inv += avgOH; if (served < d - 1e-6) st.stockoutWeeks++;
           }
         });
-      });
+      }
       for (let t = 0; t < nW; t++) { invVal[t].push(wkInv[t]); fillW[t].push(wkDem[t] > 0 ? wkServed[t] / wkDem[t] : 1); }
     }
     const band = (arrs) => arrs.map(a => { const s = a.slice().sort((x, y) => x - y); return { p10: quantile(s, 0.1), p50: quantile(s, 0.5), p90: quantile(s, 0.9) }; });

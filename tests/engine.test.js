@@ -87,3 +87,16 @@ test('rerouting during a plant outage protects fill rate', () => {
   const wait = T.simulate(data, fc, { ...L, outage, reroute: false }, base, { reps: 20 });
   assert.ok(reroute.fillRate > wait.fillRate);
 });
+
+test('a backup plant can only reroute what it has spare', () => {
+  const lv = { ...L, outage: { plantId: 'P3', startWeek: 10, weeks: 4 }, reroute: true };
+  const flow = {}; for (const l of base.primaryLanes) flow[l.from] = (flow[l.from] || 0) + l.slotsWk;
+  // give every other plant exactly `lu` of spare capacity a week over what it already ships
+  const spare = (lu) => ({ ...data, plants: data.plants.map(p => p.id === 'P3' ? p : { ...p, capacity: (flow[p.id] || 0) + lu }) });
+  const run = (d, extra) => T.simulate(d, fc, { ...lv, ...extra }, base, { reps: 20 });
+  const roomy = run(data), tight = run(spare(1000)), none = run(spare(0)), wait = run(data, { reroute: false });
+  // no spare capacity: every order waits for the restart, exactly as with rerouting off
+  assert.equal(none.fillRate, wait.fillRate);
+  assert.equal(none.rerouted, 0);
+  assert.ok(wait.fillRate < tight.fillRate && tight.fillRate < roomy.fillRate, `${wait.fillRate} < ${tight.fillRate} < ${roomy.fillRate}`);
+});
