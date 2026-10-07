@@ -300,6 +300,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; font-vari
 .modal { background: var(--bg-elev); border: 1.5px solid var(--ink); padding: 18px; width: min(640px, 100%); max-height: 86vh; display: flex; flex-direction: column; gap: 12px; }
 .modal textarea { min-height: 260px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 
+/* ---------- welcome and credits ---------- */
+.welcome { width: min(580px, 100%); gap: 14px; padding: 24px 24px 20px; overflow-y: auto; }
+.welcome .kicker { font-size: 12.5px; font-weight: 600; color: var(--flow); }
+.welcome h2 { font-size: 44px; margin-top: -6px; }
+.welcome .lead { font-size: 15px; color: var(--ink-2); }
+.welcome ol { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: 14px; }
+.welcome ol li::marker { font-family: var(--font-num); font-weight: 700; color: var(--flow); }
+.welcome .note { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.welcome .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.welcome .by { margin-right: auto; font-size: 13px; color: var(--ink-3); }
+.welcome a, .credits a { color: var(--flow); font-weight: 600; text-underline-offset: 2px; }
+.credits {
+  display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap;
+  padding: 16px 22px calc(24px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line);
+  font-size: 13px; color: var(--ink-3);
+}
+.linkbtn { background: none; border: 0; padding: 0; color: var(--flow); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1180px) {
   .hero { grid-template-columns: minmax(250px, 280px) minmax(0, 1fr); height: auto; max-height: none; }
@@ -317,6 +335,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; font-vari
   .hero-left { border-right: 0; height: auto; overflow: visible; }
   .status, .maphint { display: none; }
   .bench { padding: 0 14px 50px; }
+  .credits { padding-left: 14px; padding-right: 14px; }
+  .welcome { padding: 20px 16px 16px; }
+  .welcome h2 { font-size: 38px; }
   
   .span-8, .span-7, .span-6, .span-5, .span-4 { grid-column: span 12; }
   .cartouche .big { font-size: 56px; }

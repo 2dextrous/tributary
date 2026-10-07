@@ -6,6 +6,11 @@ A one-page browser app. A business owner enters plants, DCs, demand points, prod
 - `npm test`: engine tests (Node 20+, no dependencies). Must pass before any commit.
 - `python3 build.py`: assembles `src/` into `dist/tributary.html`, one self-contained file.
 - Open `dist/tributary.html` in a browser to try it. The copilot's plain-English mode only works when the page is published as a claude.ai artifact; elsewhere it falls back to quick what-ifs.
+- `npm run deploy`: tests, builds and force-pushes the site (`index.html`, `assets/og.png`) to the `gh-pages` branch. Live at https://2dextrous.github.io/tributary/. Refuses to run with uncommitted changes. Ask the owner before deploying: the site is public.
+
+## Public site
+- The page is public and linked from LinkedIn. Keep the welcome card (`showWelcome` in `src/app.js`), the footer credit and the link-preview tags in `src/head.html` working.
+- `assets/og.png` is the 1200×627 link-preview image. Retake it if the look of the map or summary panel changes.
 
 ## Layout
 - `src/engine.js`: all the maths. Pure functions on plain data, no DOM. Exposes `window.TRIB` in the browser and `module.exports` in Node.

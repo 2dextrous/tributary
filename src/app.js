@@ -1436,6 +1436,34 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
   }
   function setCpStatus() { $('#cpStatus').textContent = App.sample ? 'Claude is connected. Your first question asks your permission.' : 'Claude is not available here. Quick what-ifs still work.'; }
 
+  /* ================= WELCOME ================= */
+  const WELCOMED = 'tributary.welcomed.v1';
+  const AUTHOR = { name: 'Dhiraj Badshe', url: 'https://www.linkedin.com/in/dhiraj-badshe-748326202/' };
+  function seenWelcome() { try { return localStorage.getItem(WELCOMED) === '1'; } catch (e) { return false; } }
+  function showWelcome() {
+    if ($('.modal-back')) return;
+    try { localStorage.setItem(WELCOMED, '1'); } catch (e) { /* storage unavailable: show again next visit */ }
+    const back = el('div', { class: 'modal-back' });
+    const close = () => { back.remove(); };
+    const start = el('button', { class: 'btn primary', type: 'button', text: 'Start exploring', onclick: close });
+    back.append(el('div', { class: 'modal welcome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'welcomeTitle' },
+      el('div', { class: 'kicker', text: 'A supply chain digital twin that runs in your browser' }),
+      el('h2', { id: 'welcomeTitle', text: 'Tributary' }),
+      el('p', { class: 'lead', text: 'Put in your plants, warehouses, customers, products and costs. Tributary forecasts demand, picks the cheapest set of distribution centres, sizes the stock each one holds, plans the trucks, costs returns and simulates a year of operations. Move any lever and the whole network re-plans.' }),
+      el('h3', { text: 'Three things to try' }),
+      el('ol', {},
+        el('li', { html: 'Drag <b>Freight rates</b> up and watch whether the network opens another DC.' }),
+        el('li', { html: 'Open <b>Simulate</b>, shut a plant for a month and see whether rerouting protects service.' }),
+        el('li', { html: 'Open <b>Copilot</b> and tap a quick what-if such as <b>Diesel up 15%</b>. You approve every change before it runs.' })),
+      el('p', { class: 'note', html: 'The demo network is synthetic, and its Indian road freight rates are assumptions. To model your own business, open <b>Your data</b>. All the maths runs in your browser, and anything you enter is saved only on this device. <b>How it works</b> explains every formula.' }),
+      el('div', { class: 'actions' },
+        el('span', { class: 'by' }, 'Built by ', el('a', { href: AUTHOR.url, target: '_blank', rel: 'noopener', text: AUTHOR.name })),
+        el('button', { class: 'btn quiet', type: 'button', text: 'How it works', onclick: () => { close(); switchTab('method'); $('.bench').scrollIntoView({ block: 'start' }); } }),
+        start)));
+    back.addEventListener('click', (e) => { if (e.target === back) close(); });
+    document.body.append(back); start.focus();
+  }
+
   /* ================= INIT ================= */
   function setTopbarVar() { document.documentElement.style.setProperty('--tb', $('#topbar').offsetHeight + 'px'); }
   async function init() {
@@ -1465,6 +1493,7 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
     $('#btnPin').addEventListener('click', pinDraft);
     $('#btnBaseline').addEventListener('click', () => promote(null));
     $('#btnCopilot').addEventListener('click', () => openDrawer(!$('#drawer').classList.contains('open')));
+    $('#btnAbout').addEventListener('click', showWelcome);
     $('#cpClose').addEventListener('click', () => openDrawer(false));
     $('#scrim').addEventListener('click', () => openDrawer(false));
     $('#cpSend').addEventListener('click', askCopilot);
@@ -1481,6 +1510,7 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
       window.claude.use('sample').then(s => { App.sample = s || null; setCpStatus(); }).catch(() => { App.sample = null; setCpStatus(); });
       window.claude.use('downloads').then(d => { App.downloads = d || null; }).catch(() => { App.downloads = null; });
     } else setCpStatus();
+    if (!seenWelcome()) showWelcome();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

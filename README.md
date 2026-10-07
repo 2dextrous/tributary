@@ -1,5 +1,7 @@
 # Tributary
 
+**Try it: https://2dextrous.github.io/tributary/**
+
 A supply chain digital twin in one web page. Put in your plants, DCs, demand points, products, costs and past demand, then move a lever and watch the whole network re-plan: forecast, DC choice, inventory, trucks, returns and a year of simulated operations.
 
 ## Run it
@@ -22,3 +24,6 @@ The **How it works** tab in the app documents every formula.
 
 ## Working on it with Claude Code
 Open this folder in Claude Code. `CLAUDE.md` gives it the architecture, contracts and rules. A hook runs the tests after every edit, and the `math-reviewer` subagent checks engine changes.
+
+---
+Built by [Dhiraj Badshe](https://www.linkedin.com/in/dhiraj-badshe-748326202/).

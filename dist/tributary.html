@@ -4,6 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tributary: supply chain twin</title>
+<meta name="description" content="A supply chain digital twin in your browser: forecast demand, pick the cheapest DC network, size inventory, plan trucks and simulate a year. Built by Dhiraj Badshe.">
+<meta name="author" content="Dhiraj Badshe">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Tributary">
+<meta property="og:title" content="Tributary: a supply chain digital twin in your browser">
+<meta property="og:description" content="Forecast demand, pick the cheapest DC network, size inventory, plan trucks and simulate a year. Move a lever and the whole network re-plans.">
+<meta property="og:url" content="https://2dextrous.github.io/tributary/">
+<meta property="og:image" content="https://2dextrous.github.io/tributary/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+<meta property="og:image:alt" content="Tributary dashboard: a map of plants, DCs and freight flows across India with the network's yearly cost">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Display:wght@600;700;800&family=Big+Shoulders+Stencil+Display:wght@700;800&display=swap" rel="stylesheet">
@@ -310,6 +322,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; font-vari
 .modal { background: var(--bg-elev); border: 1.5px solid var(--ink); padding: 18px; width: min(640px, 100%); max-height: 86vh; display: flex; flex-direction: column; gap: 12px; }
 .modal textarea { min-height: 260px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 
+/* ---------- welcome and credits ---------- */
+.welcome { width: min(580px, 100%); gap: 14px; padding: 24px 24px 20px; overflow-y: auto; }
+.welcome .kicker { font-size: 12.5px; font-weight: 600; color: var(--flow); }
+.welcome h2 { font-size: 44px; margin-top: -6px; }
+.welcome .lead { font-size: 15px; color: var(--ink-2); }
+.welcome ol { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: 14px; }
+.welcome ol li::marker { font-family: var(--font-num); font-weight: 700; color: var(--flow); }
+.welcome .note { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.welcome .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.welcome .by { margin-right: auto; font-size: 13px; color: var(--ink-3); }
+.welcome a, .credits a { color: var(--flow); font-weight: 600; text-underline-offset: 2px; }
+.credits {
+  display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap;
+  padding: 16px 22px calc(24px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line);
+  font-size: 13px; color: var(--ink-3);
+}
+.linkbtn { background: none; border: 0; padding: 0; color: var(--flow); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1180px) {
   .hero { grid-template-columns: minmax(250px, 280px) minmax(0, 1fr); height: auto; max-height: none; }
@@ -327,6 +357,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; font-vari
   .hero-left { border-right: 0; height: auto; overflow: visible; }
   .status, .maphint { display: none; }
   .bench { padding: 0 14px 50px; }
+  .credits { padding-left: 14px; padding-right: 14px; }
+  .welcome { padding: 20px 16px 16px; }
+  .welcome h2 { font-size: 38px; }
   
   .span-8, .span-7, .span-6, .span-5, .span-4 { grid-column: span 12; }
   .cartouche .big { font-size: 56px; }
@@ -390,6 +423,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; font-vari
     <div class="tabpanel" id="tabpanel" role="tabpanel"></div>
   </section>
 </main>
+
+<footer class="credits">
+  <span>Tributary, a supply chain digital twin. Built by <a href="https://www.linkedin.com/in/dhiraj-badshe-748326202/" target="_blank" rel="noopener">Dhiraj Badshe</a>.</span>
+  <button class="linkbtn" id="btnAbout" type="button">About this app</button>
+</footer>
 
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer" aria-label="Copilot">
@@ -2467,6 +2505,34 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
   }
   function setCpStatus() { $('#cpStatus').textContent = App.sample ? 'Claude is connected. Your first question asks your permission.' : 'Claude is not available here. Quick what-ifs still work.'; }
 
+  /* ================= WELCOME ================= */
+  const WELCOMED = 'tributary.welcomed.v1';
+  const AUTHOR = { name: 'Dhiraj Badshe', url: 'https://www.linkedin.com/in/dhiraj-badshe-748326202/' };
+  function seenWelcome() { try { return localStorage.getItem(WELCOMED) === '1'; } catch (e) { return false; } }
+  function showWelcome() {
+    if ($('.modal-back')) return;
+    try { localStorage.setItem(WELCOMED, '1'); } catch (e) { /* storage unavailable: show again next visit */ }
+    const back = el('div', { class: 'modal-back' });
+    const close = () => { back.remove(); };
+    const start = el('button', { class: 'btn primary', type: 'button', text: 'Start exploring', onclick: close });
+    back.append(el('div', { class: 'modal welcome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'welcomeTitle' },
+      el('div', { class: 'kicker', text: 'A supply chain digital twin that runs in your browser' }),
+      el('h2', { id: 'welcomeTitle', text: 'Tributary' }),
+      el('p', { class: 'lead', text: 'Put in your plants, warehouses, customers, products and costs. Tributary forecasts demand, picks the cheapest set of distribution centres, sizes the stock each one holds, plans the trucks, costs returns and simulates a year of operations. Move any lever and the whole network re-plans.' }),
+      el('h3', { text: 'Three things to try' }),
+      el('ol', {},
+        el('li', { html: 'Drag <b>Freight rates</b> up and watch whether the network opens another DC.' }),
+        el('li', { html: 'Open <b>Simulate</b>, shut a plant for a month and see whether rerouting protects service.' }),
+        el('li', { html: 'Open <b>Copilot</b> and tap a quick what-if such as <b>Diesel up 15%</b>. You approve every change before it runs.' })),
+      el('p', { class: 'note', html: 'The demo network is synthetic, and its Indian road freight rates are assumptions. To model your own business, open <b>Your data</b>. All the maths runs in your browser, and anything you enter is saved only on this device. <b>How it works</b> explains every formula.' }),
+      el('div', { class: 'actions' },
+        el('span', { class: 'by' }, 'Built by ', el('a', { href: AUTHOR.url, target: '_blank', rel: 'noopener', text: AUTHOR.name })),
+        el('button', { class: 'btn quiet', type: 'button', text: 'How it works', onclick: () => { close(); switchTab('method'); $('.bench').scrollIntoView({ block: 'start' }); } }),
+        start)));
+    back.addEventListener('click', (e) => { if (e.target === back) close(); });
+    document.body.append(back); start.focus();
+  }
+
   /* ================= INIT ================= */
   function setTopbarVar() { document.documentElement.style.setProperty('--tb', $('#topbar').offsetHeight + 'px'); }
   async function init() {
@@ -2496,6 +2562,7 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
     $('#btnPin').addEventListener('click', pinDraft);
     $('#btnBaseline').addEventListener('click', () => promote(null));
     $('#btnCopilot').addEventListener('click', () => openDrawer(!$('#drawer').classList.contains('open')));
+    $('#btnAbout').addEventListener('click', showWelcome);
     $('#cpClose').addEventListener('click', () => openDrawer(false));
     $('#scrim').addEventListener('click', () => openDrawer(false));
     $('#cpSend').addEventListener('click', askCopilot);
@@ -2512,6 +2579,7 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
       window.claude.use('sample').then(s => { App.sample = s || null; setCpStatus(); }).catch(() => { App.sample = null; setCpStatus(); });
       window.claude.use('downloads').then(d => { App.downloads = d || null; }).catch(() => { App.downloads = null; });
     } else setCpStatus();
+    if (!seenWelcome()) showWelcome();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

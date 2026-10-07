@@ -5,6 +5,7 @@
   "description": "Supply chain digital twin: forecasting, network design, inventory, transport, returns and simulation in one browser page",
   "scripts": {
     "test": "node --test tests/engine.test.js",
-    "build": "python3 build.py"
+    "build": "python3 build.py",
+    "deploy": "sh deploy.sh"
   }
 }
