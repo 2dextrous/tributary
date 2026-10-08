@@ -119,15 +119,40 @@ test('rerouting during a plant outage protects fill rate', () => {
 
 test('a backup plant can only reroute what it has spare', () => {
   const lv = { ...L, outage: { plantId: 'P3', startWeek: 10, weeks: 4 }, reroute: true };
-  const flow = {}; for (const l of base.primaryLanes) flow[l.from] = (flow[l.from] || 0) + l.slotsWk;
-  // give every other plant exactly `lu` of spare capacity a week over what it already ships
-  const spare = (lu) => ({ ...data, plants: data.plants.map(p => p.id === 'P3' ? p : { ...p, capacity: (flow[p.id] || 0) + lu }) });
+  const load = {}; for (const d of base.dcs) load[d.primaryPlant] = (load[d.primaryPlant] || 0) + d.throughput;
+  // give every other plant exactly `lu` of spare capacity a week over what its own DCs take
+  const spare = (lu) => ({ ...data, plants: data.plants.map(p => p.id === 'P3' ? p : { ...p, capacity: (load[p.id] || 0) + lu }) });
   const run = (d, extra) => T.simulate(d, fc, { ...lv, ...extra }, base, { reps: 20 });
   const roomy = run(data), tight = run(spare(1000)), none = run(spare(0)), wait = run(data, { reroute: false });
   // no spare capacity: every order waits for the restart, exactly as with rerouting off
   assert.equal(none.fillRate, wait.fillRate);
   assert.equal(none.rerouted, 0);
   assert.ok(wait.fillRate < tight.fillRate && tight.fillRate < roomy.fillRate, `${wait.fillRate} < ${tight.fillRate} < ${roomy.fillRate}`);
+});
+
+test('when the cheapest backup plant is full, rerouted orders try the next one', () => {
+  const lv = { ...L, outage: { plantId: 'P3', startWeek: 10, weeks: 4 }, reroute: true };
+  const load = base.dcs.filter(d => d.primaryPlant === 'P1').reduce((a, d) => a + d.throughput, 0);
+  const p1Full = { ...data, plants: data.plants.map(p => p.id === 'P1' ? { ...p, capacity: load } : p) };
+  const fillAt = (s, id) => s.perDC.find(d => d.id === id).skus.reduce((a, x) => a + x.fill, 0);
+  const s = T.simulate(p1Full, fc, lv, base, { reps: 20 }), wait = T.simulate(data, fc, { ...lv, reroute: false }, base, { reps: 20 });
+  // Gurugram's cheapest backup, Pune, has nothing spare, so its orders go on to Sriperumbudur instead of all waiting
+  assert.ok(fillAt(s, 'D2') > fillAt(wait, 'D2'), `${fillAt(s, 'D2')} vs ${fillAt(wait, 'D2')}`);
+});
+
+test("a DC supplied by two plants keeps its backup plant's existing share during an outage", () => {
+  const d = T.defaultData();
+  d.plants = [{ id: 'A', name: 'A', lat: 19.0, lon: 73.0, capacity: 60, varCost: 30 }, { id: 'B', name: 'B', lat: 19.5, lon: 73.5, capacity: 60, varCost: 40 }];
+  d.dcs = [{ id: 'X', name: 'X', lat: 19.2, lon: 73.2, fixedCost: 1e6, capacity: 1000, handling: 10 }];
+  d.customers = [{ id: 'C', name: 'C', lat: 19.25, lon: 73.25, weight: 1 }];
+  d.products = [{ id: 'K', name: 'K', value: 100000, cube: 1, baseWeekly: 100, cv: 0.001, season: 'none', amp: 0, trend: 0,
+    northBias: 1, returnRate: 0, refurbShare: 0, recovery: 0, processing: 0 }];
+  const f = T.forecast(d), lv = T.defaultLevers(), net = T.optimize(d, f, lv);
+  // design: A ships 60 a week and B ships 40 to X, whose main plant is A
+  assert.equal(net.dcs[0].primaryPlant, 'A');
+  const s = T.simulate(d, f, { ...lv, outage: { plantId: 'A', startWeek: 10, weeks: 6 }, reroute: true }, net, { reps: 5 });
+  // B can make 60 a week; with A down, all of it can go to X, so X gets 60 of its 100 a week
+  for (const w of s.fill.slice(12, 15)) assert.ok(Math.abs(w.p50 - 0.6) < 0.03, `${w.p50}`);
 });
 
 test('outage reroute volume and extra freight are averages over all runs', () => {

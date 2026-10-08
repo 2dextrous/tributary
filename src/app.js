@@ -1194,9 +1194,9 @@ holding cost = (SS + cycle + in transit) × value × holding rate</span>
 <h3>6. Returns</h3>
 <p>Returns = demand × return rate × lever. They travel back to their DC by part load at a premium, then by full truck to the hub. Net cost = reverse freight + processing + value written off − refurbishable share × resale value.</p>
 <h3>7. Simulation</h3>
-<p>For each DC and product, 52 weeks are simulated after an 8-week warm-up, with demand drawn around the seasonal forecast and noise that scales with the season. The order-up-to policy above is applied each review; unmet demand is lost. A plant outage blocks orders from that plant. With rerouting on, they go to the next-cheapest plant (longer lead time, extra freight), but only as far as that plant has spare capacity: what it can make in a week minus what it already ships in the chosen design. Spare capacity builds up week by week from the start of the outage, and orders placed in the same week share it in proportion to their size. Whatever does not fit waits for the restart, which is what happens to every order when rerouting is off.</p>
-<span class="formula">spare (lu a week) = backup plant capacity − its average weekly flow in the design
-rerouted from the start of the outage to week t ≤ spare × weeks since the outage began</span>
+<p>For each DC and product, 52 weeks are simulated after an 8-week warm-up, with demand drawn around the seasonal forecast and noise that scales with the season. The order-up-to policy above is applied each review; unmet demand is lost. A plant outage blocks orders from that plant. With rerouting on, each DC it supplies tries the other plants, cheapest line-haul first (longer lead time, extra freight). A plant can only give its spare capacity. The simulation sends each DC's orders to its main plant, so spare capacity is what a plant can make in a week minus the average weekly volume of the DCs it is main plant for. Spare capacity builds up week by week from the start of the outage, and orders that reach the same plant in the same week share it in proportion to their size. Whatever no plant can take waits for the restart, which is what happens to every order when rerouting is off.</p>
+<span class="formula">spare (lu a week) = plant capacity − average weekly volume of the DCs it is main plant for
+lu rerouted to a plant from the start of the outage to week t ≤ spare × weeks since the outage began</span>
 <p>Results are bands across runs, not single guesses, and the rerouted volume and extra freight are averages over all runs. Season-aware buffers scale safety stock with the seasonal forecast instead of holding it flat.</p>
 <h3>8. Copilot and human approval</h3>
 <p>The copilot never changes the plan on its own. It translates a question into proposed lever changes and shows them to you first. Nothing runs until you approve, and you can edit the numbers before you do. After the run, Claude explains the result using only the numbers the model produced. Only you can make a scenario the new baseline. Every step is written to the decision log.</p>
@@ -1204,7 +1204,8 @@ rerouted from the start of the outage to week t ≤ spare × weeks since the out
 <ul>
 <li>Network costs use average weekly volume; peak-season capacity is tested in the simulation, not in the design search.</li>
 <li>Each DC orders all products on one cycle, and lead time comes from its main supplying plant.</li>
-<li>Spare capacity for rerouting is measured against a plant's average weekly flow, not its seasonal peak.</li>
+<li>Spare capacity for rerouting is measured against average weekly volume, not the seasonal peak. Orders that wait for the restart are not offered to another plant again later in the outage.</li>
+<li>An outage blocks only orders placed while the plant is down, so a DC that orders every few weeks can miss a short outage entirely.</li>
 <li>Routing inside each design ignores inventory, truck rounding, ordering and returns, which are costed afterwards. The design is the best under this method, not a proven optimum.</li>
 <li>Pooling assumes demand in different cities is independent, and lead times are fixed. Neither correlated demand nor late deliveries is buffered.</li>
 <li>Exhaustive search is exact but grows as 2ⁿ. Up to about 11 free candidate DCs stays quick; beyond that, lock some open or closed.</li>

@@ -562,24 +562,23 @@
       return arr;
     }));
     const plantIdx = (id) => P.findIndex(p => p.id === id);
-    const backup = dcs.map(d => {
+    // in an outage a DC tries the other plants, cheapest line-haul first
+    const alts = dcs.map(d => {
       const j = d.idx, pr = plantIdx(d.primaryPlant);
-      let b = -1, bc = Infinity;
-      P.forEach((p, q) => { if (q === pr) return; if (pp.prim[q][j] < bc) { bc = pp.prim[q][j]; b = q; } });
-      return b;
+      return P.map((p, q) => q).filter(q => q !== pr).sort((a, b) => pp.prim[a][j] - pp.prim[b][j]).map(b => ({ b,
+        Lb: Math.max(1, Math.ceil((pp.kmPD[b][j] / C.speedKmDay + levers.handlingDays) / 7)), premium: Math.max(0, pp.prim[b][j] - pp.prim[pr][j]) }));
     });
-    // spare capacity of each plant: what it can make in a week minus its average weekly flow in this design (lu/week)
-    const spare = P.map(p => Math.max(0, p.capacity - net.primaryLanes.filter(l => l.from === p.id).reduce((a, l) => a + l.slotsWk, 0)));
+    // spare capacity of each plant (lu/week). Every DC orders from its main plant here, so a plant's normal load
+    // is the average throughput of the DCs it is main plant for.
+    const spare = P.map(p => Math.max(0, p.capacity - dcs.filter(d => d.primaryPlant === p.id).reduce((a, d) => a + d.throughput, 0)));
     // one line per DC x SKU with demand, in DC then SKU order
     const items = [];
     dcs.forEach((d, o) => {
-      const pr = plantIdx(d.primaryPlant), b = backup[o];
-      const Lb = b >= 0 ? Math.max(1, Math.ceil((pp.kmPD[b][d.idx] / C.speedKmDay + levers.handlingDays) / 7)) : 0;
-      const premium = b >= 0 ? Math.max(0, pp.prim[b][d.idx] - pp.prim[pr][d.idx]) : 0;
+      const pr = plantIdx(d.primaryPlant);
       K.forEach((p, k) => {
         const m = mWeek[o][k]; let mbar = 0; for (let h = 0; h < 52; h++) mbar += m[h]; mbar /= 52;
         if (mbar <= 1e-9) return;
-        items.push({ o, k, p, m, mbar, sigma: d.sgK[k], Lw: d.L, R: d.R, pr, b, Lb, premium });
+        items.push({ o, k, p, m, mbar, sigma: d.sgK[k], Lw: d.L, R: d.R, pr, alts: alts[o] });
       });
     });
     const mAt = (it, t) => it.m[mod52(t)];
@@ -601,7 +600,7 @@
       const onHand = items.map(it => S(it, -warm)), pipeline = items.map(() => new Map());
       const used = new Float64Array(P.length); // lu rerouted to each backup plant so far in this run
       for (let t = -warm; t < nW; t++) {
-        const asks = [];
+        let asks = [];
         items.forEach((it, x) => {
           const pl = pipeline[x];
           if (pl.has(t)) { onHand[x] += pl.get(t); pl.delete(t); }
@@ -611,23 +610,27 @@
           if (q <= 0) return;
           const plantDown = downIdx >= 0 && it.pr === downIdx && t >= oStart && t < oEnd;
           if (!plantDown) add(pl, t + it.Lw, q);
-          else if (levers.reroute && it.b >= 0) asks.push({ x, q });
+          else if (levers.reroute && it.alts.length) asks.push({ x, q });
           else add(pl, oEnd + it.Lw, q);
         });
-        if (asks.length) {
-          // a backup plant ships at most the spare capacity built up since the outage began;
-          // this week's rerouted orders share what is left in proportion to size, the rest waits for the restart
-          const want = new Float64Array(P.length);
-          for (const a of asks) want[items[a.x].b] += a.q * items[a.x].p.cube;
-          const share = P.map((_, b) => want[b] > 0 ? Math.min(1, Math.max(0, spare[b] * (t - oStart + 1) - used[b]) / want[b]) : 0);
+        // rerouted orders go down each DC's list of other plants. A plant ships at most the spare capacity built up
+        // since the outage began, shared in proportion to size by the orders that reach it this week; what is left
+        // tries the next plant, and what no plant can take waits for the restart
+        for (let rank = 0; asks.length; rank++) {
+          const want = new Float64Array(P.length), next = [];
+          for (const a of asks) { const alt = items[a.x].alts[rank]; if (alt) want[alt.b] += a.q * items[a.x].p.cube; }
+          const room = P.map((_, b) => Math.max(0, spare[b] * (t - oStart + 1) - used[b]));
           for (const a of asks) {
-            const it = items[a.x], qb = a.q * share[it.b], qw = a.q - qb;
+            const it = items[a.x], alt = it.alts[rank];
+            if (!alt) { add(pipeline[a.x], oEnd + it.Lw, a.q); continue; }
+            const qb = it.p.cube > 0 && want[alt.b] > room[alt.b] ? a.q * (room[alt.b] / want[alt.b]) : a.q;
             if (qb > 0) {
-              add(pipeline[a.x], t + it.Lb, qb); used[it.b] += qb * it.p.cube;
-              rerouted += qb / reps; expediteCost += qb * it.p.cube * it.premium / reps;
+              add(pipeline[a.x], t + alt.Lb, qb); used[alt.b] += qb * it.p.cube;
+              rerouted += qb / reps; expediteCost += qb * it.p.cube * alt.premium / reps;
             }
-            if (qw > 0) add(pipeline[a.x], oEnd + it.Lw, qw);
+            if (a.q - qb > 0) next.push({ x: a.x, q: a.q - qb });
           }
+          asks = next;
         }
         items.forEach((it, x) => {
           const d = dem[x][t + warm], startOH = onHand[x], served = Math.min(startOH, d);
