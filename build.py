@@ -9,7 +9,9 @@ html = (
     read("head.html")
     + "<style>\n" + read("styles.css") + "\n</style>\n</head>\n<body>\n"
     + read("body.html")
-    + "\n<script>\n" + read("engine.js") + "\n</script>\n"
+    # app.js reads the engine and host scripts back by id to start the engine in a Web Worker
+    + '\n<script id="trib-engine">\n' + read("engine.js") + "\n</script>\n"
+    + '<script id="trib-host">\n' + read("worker.js") + "\n</script>\n"
     + "<script>\n" + read("app.js") + "\n</script>\n</body>\n</html>\n"
 )
 out = root / "dist" / "tributary.html"

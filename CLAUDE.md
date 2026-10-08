@@ -15,8 +15,10 @@ A one-page browser app. A business owner enters plants, DCs, demand points, prod
 ## Layout
 - `src/engine.js`: all the maths. Pure functions on plain data, no DOM. Exposes `window.TRIB` in the browser and `module.exports` in Node.
 - `src/app.js`: UI only (map canvas, charts, levers, tabs, scenarios, copilot). It renders engine output and never computes business numbers itself.
+- `src/worker.js`: the engine host. `app.js` runs it in a Web Worker built from the page's own engine and host scripts (the `trib-engine` and `trib-host` tags from `build.py`), so solves never freeze the page; if a worker cannot start, the same host runs on the main thread. It keeps the data, the forecast and `pp`, and sends back only plain data. `app.js` reaches it through `Engine`, always asynchronously.
 - `src/styles.css`, `src/body.html`, `src/head.html`: design tokens and markup.
 - `tests/engine.test.js`: known-answer tests. Every engine change gets a test.
+- `tests/worker.test.js`: checks the host matches the engine and that every reply survives a structured clone.
 
 ## Engine contracts (ask before changing a shape)
 - `forecast(data)` returns `series["custId|skuId"] = {fc: {smart, naive}[52], sigma, wmape, bias, pred}`, `products[skuId] = {wmape, bias, fva}`, `seasonal`.
@@ -34,6 +36,7 @@ A one-page browser app. A business owner enters plants, DCs, demand points, prod
 ## Rules
 - Randomness only through `util.rngFrom(seed)` so results are reproducible.
 - Every number in the UI comes from the engine. No hard-coded results.
+- Only structured-cloneable data crosses the worker boundary: no functions, and no `pp` beyond `res.pp.mu`. If the UI needs more, add it to the host's reply.
 - Keep the built page publishable: no external scripts except cdnjs or jsDelivr, no remote images or fetches, `localStorage` wrapped in try/catch, light and dark tokens in `styles.css`, `prefers-reduced-motion` respected.
 - The copilot never applies a change without the user clicking "Approve and run", and can never promote a baseline.
 - Exhaustive DC search grows as 2^n. Keep free candidate DCs at 11 or fewer, or move to a MILP.

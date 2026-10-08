@@ -57,8 +57,8 @@
   const App = {
     data: null, fc: null, dataVersion: 1, baseline: null, draft: null, pinned: [], audit: [],
     tab: 'forecast', dataSub: 'plants', dirty: false, showReturns: false, simReps: 30,
-    fcSel: { sku: null, loc: 'ALL' }, sweepCfg: { key: 'freightIndex', from: 0.7, to: 1.6, steps: 10 }, sweep: null, sweepStop: false,
-    compareSel: null, sample: null, downloads: null, cpAbort: null, fvCache: null
+    fcSel: { sku: null, loc: 'ALL' }, sweepCfg: { key: 'freightIndex', from: 0.7, to: 1.6, steps: 10 }, sweep: null, sweepStop: false, sweeping: false,
+    compareSel: null, sample: null, downloads: null, cpAbort: null
   };
   const sameLevers = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -80,14 +80,73 @@
     return out;
   }
 
-  function runScenario(levers) {
-    const res = T.optimize(App.data, App.fc, levers);
-    const sim = T.simulate(App.data, App.fc, levers, res, { reps: App.simReps });
-    return { res, sim };
-  }
+  /* ---------------- engine ----------------
+     The engine runs in a Web Worker, so the page stays responsive while it solves. The worker is built from
+     the engine and host scripts already in this page (src/worker.js is the host), so the page stays one
+     self-contained file. Where a worker cannot start, as in some sandboxes, the same host runs on this thread. */
+  const Engine = (() => {
+    const jobs = new Map();
+    let worker = null, local = null, seq = 0, queue = Promise.resolve(), loaded = null;
+    // a frame first, so the status line paints before the engine holds this thread; a hidden page gets no frames
+    const paint = () => (document.hidden ? new Promise(r => setTimeout(r, 0)) : frame());
+    function runLocal(job) {
+      queue = queue.then(paint).then(() => job.resolve(local[job.cmd](job.args))).catch(job.reject);
+    }
+    function goLocal(why) {
+      if (local) return;
+      if (worker) { worker.terminate(); worker = null; }
+      if (why) console.warn('Tributary: no Web Worker, so the engine runs on the page.', why);
+      local = window.TRIB_HOST(T);
+      const pending = [...jobs.values()]; jobs.clear();
+      // give this host the data the worker had, then redo whatever the worker had not answered
+      if (loaded) runLocal({ cmd: 'load', args: loaded, resolve() {}, reject() {} });
+      pending.forEach(runLocal);
+    }
+    function start() {
+      const eng = document.getElementById('trib-engine'), host = document.getElementById('trib-host');
+      if (!eng || !host || typeof Worker !== 'function' || typeof Blob !== 'function') return goLocal();
+      let url = null;
+      try {
+        url = URL.createObjectURL(new Blob([eng.textContent, '\n;\n', host.textContent], { type: 'text/javascript' }));
+        worker = new Worker(url);
+      } catch (e) { if (url) URL.revokeObjectURL(url); return goLocal(e); }
+      const timer = setTimeout(() => goLocal('the worker did not start'), 8000);
+      worker.onmessage = (e) => {
+        const m = e.data || {};
+        if (m.ready) { clearTimeout(timer); URL.revokeObjectURL(url); return; }
+        const job = jobs.get(m.id); if (!job) return;
+        jobs.delete(m.id);
+        if (!m.ok) { job.reject(new Error(m.error)); return; }
+        if (job.cmd === 'load') loaded = job.args;
+        job.resolve(m.value);
+      };
+      worker.onerror = (e) => { e.preventDefault(); clearTimeout(timer); goLocal(e.message || 'the worker stopped'); };
+    }
+    function call(cmd, args) {
+      return new Promise((resolve, reject) => {
+        const job = { cmd, args, resolve, reject };
+        if (!worker) { goLocal(); runLocal(job); return; }
+        const id = ++seq; jobs.set(id, job);
+        try { worker.postMessage({ id, cmd, args }); } catch (e) { jobs.delete(id); reject(e); }
+      });
+    }
+    return {
+      start,
+      // a copy of the data goes in, so later edits on the page reach the engine only when applied
+      load: (data) => call('load', { data: clone(data) }),            // → { fc, history }
+      scenario: (levers, reps) => call('scenario', { levers: clone(levers), reps }),   // → { res, sim, ms }
+      simulate: (levers, res, reps) => call('simulate', { levers: clone(levers), res, reps }),   // → { sim }
+      optimize: (levers) => call('optimize', { levers: clone(levers) })   // → { res }
+    };
+  })();
+  const runScenario = (levers) => Engine.scenario(levers, App.simReps);
 
   /* ---------------- status / toast ---------------- */
-  function setStatus(msg, busy) { const s = $('#status'); s.textContent = msg; s.classList.toggle('busy', !!busy); }
+  function setStatus(msg, busy) {
+    const s = $('#status'); s.textContent = msg; s.classList.toggle('busy', !!busy);
+    // the status line is hidden on phones, so the map carries the same message while the engine works
+    $('#busy').hidden = !busy; if (busy) $('#busyText').textContent = msg;
+  }
   let toastTimer = null;
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
   function logAudit(actor, action) {
@@ -351,7 +410,7 @@
         const lock = (lv && lv.locks[d.id]) || 'auto';
         const lockTxt = { auto: 'Optimizer decides', open: 'Locked open', closed: 'Locked closed' }[lock];
         const next = { auto: 'lock it open', open: 'lock it closed', closed: 'let the optimizer decide' }[lock];
-        if (!info) return `<b>${esc(d.name)} DC</b><div class="row"><span>Status</span><span>Not used</span></div><div class="row"><span>Control</span><span>${lockTxt}</span></div><div class="row"><span>Fixed cost</span><span>${inr(d.fixedCost * lv.dcFixedIndex)}/yr</span></div><div class="hint">Click to ${next}</div>`;
+        if (!info) return `<b>${esc(d.name)} DC</b><div class="row"><span>Status</span><span>Not used</span></div><div class="row"><span>Control</span><span>${lockTxt}</span></div><div class="row"><span>Fixed cost</span><span>${inr(d.fixedCost * (lv ? lv.dcFixedIndex : 1))}/yr</span></div><div class="hint">Click to ${next}</div>`;
         const served = r.assign.filter(a => a === d.id).length;
         return `<b>${esc(d.name)} DC</b><div class="row"><span>Status</span><span>In use</span></div><div class="row"><span>Control</span><span>${lockTxt}</span></div>` +
           `<div class="row"><span>Throughput</span><span>${n0(info.throughput)} / ${n0(d.capacity)} lu/wk</span></div><div class="row"><span>Utilisation</span><span>${pct(info.util, 0)}</span></div>` +
@@ -387,6 +446,7 @@
   })();
 
   function cycleLock(id) {
+    if (!App.draft || planning) return;   // the levers wait while the plan is being built
     const L = App.draft.levers; const cur = L.locks[id] || 'auto';
     const nxt = { auto: 'open', open: 'closed', closed: 'auto' }[cur];
     if (nxt === 'auto') delete L.locks[id]; else L.locks[id] = nxt;
@@ -497,8 +557,15 @@
     return (delta > 0) === higherIsBetter ? 'good' : 'bad';
   }
   function renderSummary() {
-    const d = App.draft, b = App.baseline, r = d.result, br = b.result;
-    if (!r) return;
+    const d = App.draft, b = App.baseline;
+    if (planning || !d || !d.result || !b || !b.result) {
+      // nothing solved for this data yet: hold the place until the engine is done
+      $('#cartouche').innerHTML = `<div class="sname"><span>${d ? esc(d.name) : 'Baseline'}</span></div>
+        <div class="big num pending">₹…</div><div class="sub">${d ? 'Re-planning with your data…' : 'Planning the network…'}</div>`;
+      $('#vitals').innerHTML = '';
+      return;
+    }
+    const r = d.result, br = b.result;
     const isBase = sameLevers(d.levers, b.levers);
     $('#scenName').textContent = isBase ? 'Baseline' : d.name;
     const dt = r.total - br.total;
@@ -575,30 +642,108 @@
   function markDraftEdited() {
     if (App.draft.origin !== 'manual' || App.draft.name === 'Baseline') { App.draft.origin = 'manual'; App.draft.name = 'Working draft'; }
   }
-  function resetDraft() {
+  async function resetDraft() {
+    await planDone();
+    draftReplaced();
     App.draft = { name: 'Baseline', levers: clone(App.baseline.levers), result: App.baseline.result, sim: App.baseline.sim, origin: 'baseline' };
     syncLevers(); MapView.setResult(App.draft.result, App.draft.levers, null); renderSummary(); renderTab(); save();
     setStatus('Back on the baseline');
   }
 
-  let recomputeTimer = null;
-  function scheduleRecompute(delay) { clearTimeout(recomputeTimer); setStatus('Re-planning…', true); recomputeTimer = setTimeout(recomputeDraft, delay == null ? 300 : delay); }
-  async function recomputeDraft() {
-    setStatus('Checking every network design…', true); await frame();
-    try {
-      const t0 = performance.now(); const prev = App.draft.result ? new Set(App.draft.result.open) : null;
-      const { res, sim } = runScenario(App.draft.levers);
-      App.draft.result = res; App.draft.sim = sim; App.fvCache = null;
-      const ms = Math.round(performance.now() - t0);
-      setStatus(`Costed ${n0(res.search.evaluated)} network designs and ran ${App.simReps} simulations in ${ms} ms`);
-      MapView.setResult(res, App.draft.levers, prev); renderSummary(); renderTab(); save();
-    } catch (err) { console.error(err); setStatus('Could not solve this scenario: ' + (err && err.message || err)); }
+  /* ---------------- solving ----------------
+     Engine calls are asynchronous, so the page keeps working while the engine solves.
+     A data refresh (first load, applied data, reset, import, a moved returns hub) re-forecasts the data and
+     re-solves the baseline and draft. While it runs, results show a placeholder and the levers wait.
+     A draft solve follows each lever move. One runs at a time: levers moved meanwhile are solved as soon as
+     it returns, and a result for levers that have since moved is dropped, never shown. */
+  let planning = null;                                   // the data refresh in progress, if any
+  let recomputeTimer = null, draftGen = 0, draftRun = null, draftAgain = false, draftStale = false, simRun = null;
+
+  async function planDone() { while (planning) await planning.then(() => {}, () => {}); }
+  // wait until the draft's result matches the current data and levers
+  async function settled() {
+    for (;;) {
+      if (planning) await planDone();
+      else if (recomputeTimer) await recomputeDraft();
+      else if (draftRun) await draftRun;
+      else if (simRun) await simRun.catch(() => {});
+      else return;
+    }
   }
+  // the draft was replaced outright, so a solve still running for the old one is stale
+  function draftReplaced() { draftGen++; draftAgain = false; draftStale = false; clearTimeout(recomputeTimer); recomputeTimer = null; }
+  // re-render the open tab if it shows the draft's results; tabs with inputs of their own keep what is being typed
+  function refreshTab() { if (!['data', 'sweep', 'method'].includes(App.tab)) renderTab(); }
+
+  // a data refresh: work loads the data into the engine and solves it, and the views wait until it is done
+  async function refresh(work) {
+    draftReplaced();
+    const run = Promise.resolve().then(work);
+    planning = run;
+    $('#levers').toggleAttribute('inert', true);
+    MapView.setResult(null, App.draft && App.draft.levers); MapView.rebuild(); renderSummary(); renderTab();
+    try { return await run; }
+    finally {
+      if (planning === run) {
+        planning = null; $('#levers').toggleAttribute('inert', false);
+        try { renderSummary(); renderTab(); } catch (e) { console.error(e); }
+      }
+    }
+  }
+  // send the data as it is now to the engine, which forecasts it
+  async function loadData() {
+    const data = App.data, f = await Engine.load(data);
+    App.fc = f.fc; data.history = f.history;
+  }
+
+  // the levers changed: anything still solving for the old ones is stale, and the draft is solved again shortly
+  function scheduleRecompute(delay) {
+    draftGen++; draftStale = true;
+    clearTimeout(recomputeTimer); setStatus('Re-planning…', true);
+    recomputeTimer = setTimeout(recomputeDraft, delay == null ? 300 : delay);
+  }
+  function recomputeDraft() {
+    clearTimeout(recomputeTimer); recomputeTimer = null; draftStale = true;
+    if (draftRun) draftAgain = true;
+    else draftRun = Promise.resolve().then(solveDraft);
+    return draftRun;
+  }
+  async function solveDraft() {
+    try {
+      do {
+        draftAgain = false;
+        await planDone();
+        if (!draftStale) continue;                       // a data refresh solved the draft meanwhile
+        const gen = ++draftGen, levers = clone(App.draft.levers);
+        setStatus('Checking every network design…', true);
+        try {
+          const { res, sim, ms } = await runScenario(levers);
+          if (gen !== draftGen || draftAgain) continue;  // the levers moved while it solved: drop this result
+          const prev = App.draft.result ? new Set(App.draft.result.open) : null;
+          App.draft.result = res; App.draft.sim = sim; draftStale = false;
+          setStatus(`Costed ${n0(res.search.evaluated)} network designs and ran ${sim.reps} simulations in ${Math.round(ms)} ms`);
+          MapView.setResult(res, App.draft.levers, prev); renderSummary(); refreshTab(); save();
+        } catch (err) {
+          if (gen === draftGen && !draftAgain) { console.error(err); setStatus('Could not solve this scenario: ' + (err && err.message || err)); }
+        }
+      } while (draftAgain);
+    } finally { draftRun = null; }
+  }
+  // re-simulate the draft's design after a change only the simulation sees: outage, rerouting, buffers, runs
   async function runSimOnly() {
-    setStatus('Simulating 52 weeks…', true); await frame();
-    App.draft.sim = T.simulate(App.data, App.fc, App.draft.levers, App.draft.result, { reps: App.simReps });
-    setStatus(`Ran ${App.simReps} simulations of the next 52 weeks`);
-    MapView.setResult(App.draft.result, App.draft.levers, null); renderSummary(); renderTab(); save();
+    if (planning || draftStale || draftRun) return recomputeDraft();   // the design is being solved anyway: include this change
+    const gen = ++draftGen, run = Engine.simulate(App.draft.levers, App.draft.result, App.simReps);
+    simRun = run;
+    setStatus('Simulating 52 weeks…', true);
+    try {
+      const { sim } = await run;
+      if (gen !== draftGen) return;
+      App.draft.sim = sim;
+      setStatus(`Ran ${sim.reps} simulations of the next 52 weeks`);
+      MapView.setResult(App.draft.result, App.draft.levers, null); renderSummary(); refreshTab(); save();
+    } catch (err) {
+      if (gen === draftGen) { console.error(err); setStatus('Could not simulate: ' + (err && err.message || err)); }
+    } finally { if (simRun === run) simRun = null; }
   }
 
   /* ================= TABS ================= */
@@ -608,6 +753,12 @@
   }
   function renderTab() {
     const p = $('#tabpanel'); p.innerHTML = '';
+    // until there is a plan for this data, only How it works can show, and Your data once a first plan exists
+    const ready = App.draft && App.baseline;
+    if (App.tab !== 'method' && (!ready || (planning && App.tab !== 'data'))) {
+      p.append(el('div', { class: 'empty', text: ready ? 'Re-planning with your data…' : 'Planning the network…' }));
+      return;
+    }
     try { TABS[App.tab](p); } catch (err) { console.error(err); p.append(el('div', { class: 'empty', text: 'This view hit an error: ' + (err && err.message) })); }
   }
   function head(p, title, text, right) {
@@ -629,13 +780,8 @@
   const plantName = (id) => (App.data.plants.find(d => d.id === id) || {}).name || id;
 
   /* ---------- Forecast ---------- */
-  function forecastValue() {
-    if (App.fvCache) return App.fvCache;
-    const r = App.draft.result; const L1 = clone(App.draft.levers), L2 = clone(App.draft.levers); L1.forecastMethod = 'smart'; L2.forecastMethod = 'naive';
-    const a = T.evaluate(T.prepare(App.data, App.fc, L1), r.open, true), b = T.evaluate(T.prepare(App.data, App.fc, L2), r.open, true);
-    App.fvCache = { ssSmart: a.kpi.ssValue, ssNaive: b.kpi.ssValue, holdSmart: a.comp.holding, holdNaive: b.comp.holding };
-    return App.fvCache;
-  }
+  // safety stock and holding cost of the draft's design planned on each forecast method, costed by the engine with each solve
+  const forecastValue = () => App.draft.result.forecastValue;
   TABS.forecast = (p) => {
     const D = App.data, fc = App.fc; if (!App.fcSel.sku || !D.products.find(x => x.id === App.fcSel.sku)) App.fcSel.sku = D.products[0].id;
     if (App.fcSel.loc !== 'ALL' && !D.customers.find(c => c.id === App.fcSel.loc)) App.fcSel.loc = 'ALL';
@@ -778,7 +924,7 @@
     const curHub = (T.CITIES.find(c => Math.abs(c.lat - D.returnsHub.lat) < 0.3 && Math.abs(c.lon - D.returnsHub.lon) < 0.3) || {}).name || 'Nagpur';
     ctl.append(field('Returns hub location', selectEl(hubOpts, curHub, v => {
       const c = T.CITIES.find(x => x.name === v); D.returnsHub = { name: c.name + ' returns hub', lat: c.lat, lon: c.lon };
-      App.dataVersion++; logAudit('You', `Moved the returns hub to ${c.name}`); rerunAll();
+      App.dataVersion++; logAudit('You', `Moved the returns hub to ${c.name}`); replan().catch(replanFailed);
     })));
     ctl.append(field('On the map', seg([[true, 'Show return flows'], [false, 'Hide']], App.showReturns, v => { App.showReturns = v; MapView.kick(); renderTab(); }, 'Return flows on map')));
     p.append(ctl);
@@ -841,14 +987,25 @@
     if (!sameLevers(App.draft.levers, App.baseline.levers) && !App.pinned.some(pn => sameLevers(pn.levers, App.draft.levers))) list.push({ id: 'draft', name: App.draft.name, levers: App.draft.levers, result: App.draft.result, sim: App.draft.sim, fixed: true });
     return list.concat(App.pinned);
   }
-  async function ensurePinnedFresh() {
+  // re-solve pinned scenarios last solved on older data; calls made while it runs share the same run
+  let pinRun = null;
+  function ensurePinnedFresh() {
+    return pinRun || (pinRun = resolvePinned()
+      .catch(err => { console.error(err); setStatus('Could not re-solve the pinned scenarios: ' + (err && err.message || err)); })
+      .finally(() => { pinRun = null; }));
+  }
+  async function resolvePinned() {
     let changed = false;
-    for (const sc of App.pinned) {
-      if (sc.result && sc.ver === App.dataVersion) continue;
-      setStatus(`Re-solving ${sc.name}…`, true); await frame();
-      const { res, sim } = runScenario(sc.levers); sc.result = res; sc.sim = sim; sc.ver = App.dataVersion; changed = true;
+    for (;;) {
+      await planDone();
+      const sc = App.pinned.find(x => !x.result || x.ver !== App.dataVersion);
+      if (!sc) break;
+      const ver = App.dataVersion;
+      setStatus(`Re-solving ${sc.name}…`, true);
+      const { res, sim } = await runScenario(sc.levers);
+      if (ver === App.dataVersion) { sc.result = res; sc.sim = sim; sc.ver = ver; changed = true; }
     }
-    if (changed) { setStatus('Pinned scenarios re-solved with your current data'); renderTab(); }
+    if (changed) { setStatus('Pinned scenarios re-solved with your current data'); refreshTab(); }
   }
   TABS.compare = (p) => {
     head(p, 'Compare', 'Side by side against the baseline. Pin a scenario from the top bar to add it here; only you can promote one to be the new baseline.');
@@ -877,7 +1034,7 @@
         const name = el('input', { type: 'text', value: sc.name, 'aria-label': 'Scenario name', style: { maxWidth: '260px' } });
         name.addEventListener('change', () => { sc.name = name.value.trim() || sc.name; save(); renderTab(); });
         act.append(el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } }, name,
-          el('button', { class: 'btn small quiet', type: 'button', text: 'Open in levers', onclick: () => { App.draft = { name: sc.name, levers: clone(sc.levers), result: sc.result, sim: sc.sim, origin: sc.origin || 'manual' }; syncLevers(); MapView.setResult(sc.result, App.draft.levers, null); renderSummary(); renderTab(); toast(`Opened ${sc.name}`); } }),
+          el('button', { class: 'btn small quiet', type: 'button', text: 'Open in levers', onclick: () => { draftReplaced(); App.draft = { name: sc.name, levers: clone(sc.levers), result: sc.result, sim: sc.sim, origin: sc.origin || 'manual' }; syncLevers(); MapView.setResult(sc.result, App.draft.levers, null); renderSummary(); renderTab(); setStatus(`Opened ${sc.name}`); toast(`Opened ${sc.name}`); } }),
           el('button', { class: 'btn small quiet', type: 'button', text: 'Make baseline', onclick: () => promote(sc) }),
           el('button', { class: 'btn small quiet', type: 'button', text: 'Remove', onclick: () => { App.pinned = App.pinned.filter(x => x !== sc); save(); renderTab(); } })));
       }
@@ -905,18 +1062,17 @@
     const from = el('input', { type: 'number', step: 'any', value: +(cfg.from * Lv.disp).toFixed(3), style: { width: '100px' } });
     const to = el('input', { type: 'number', step: 'any', value: +(cfg.to * Lv.disp).toFixed(3), style: { width: '100px' } });
     const steps = el('input', { type: 'number', min: 3, max: 15, value: cfg.steps, style: { width: '80px' } });
-    const runBtn = el('button', { class: 'btn primary', type: 'button', text: 'Run sweep' });
-    const stopBtn = el('button', { class: 'btn quiet', type: 'button', text: 'Stop', hidden: true });
+    const runBtn = el('button', { class: 'btn primary', type: 'button', text: 'Run sweep', disabled: App.sweeping });
+    const stopBtn = el('button', { class: 'btn quiet', type: 'button', text: 'Stop', hidden: !App.sweeping, onclick: () => { App.sweepStop = true; } });
     ctl.append(field('Lever', selectEl(LEVERS.map(l => [l.key, l.label]), cfg.key, v => { const l = LEVER[v]; App.sweepCfg = { key: v, from: l.min, to: l.max, steps: 9 }; App.sweep = null; renderTab(); })),
       field(`From (${Lv.unit})`, from), field(`To (${Lv.unit})`, to), field('Steps', steps), runBtn, stopBtn);
     p.append(ctl);
-    runBtn.addEventListener('click', async () => {
+    runBtn.addEventListener('click', () => {
       App.sweepCfg.from = clamp(+from.value / Lv.disp, Lv.min, Lv.max); App.sweepCfg.to = clamp(+to.value / Lv.disp, Lv.min, Lv.max); App.sweepCfg.steps = clamp(+steps.value | 0, 3, 15);
-      runBtn.disabled = true; stopBtn.hidden = false; stopBtn.onclick = () => { App.sweepStop = true; };
-      await runSweep(); runBtn.disabled = false; stopBtn.hidden = true;
+      runSweep();
     });
     const sw = App.sweep;
-    if (!sw || sw.key !== cfg.key) { p.append(el('div', { class: 'empty', text: `Choose a range for ${Lv.label.toLowerCase()} and press Run sweep. Each step re-solves the whole network design, so 10 steps take a few seconds.` })); return; }
+    if (!sw || sw.key !== cfg.key || !sw.rows.length) { p.append(el('div', { class: 'empty', text: `Choose a range for ${Lv.label.toLowerCase()} and press Run sweep. Each step re-solves the whole network design, so 10 steps take a few seconds.` })); return; }
     const g = el('div', { class: 'grid' }); p.append(g);
     const a = el('div', { class: 'panel span-12' }); g.append(a); a.append(el('h3', { text: `Annual cost as ${Lv.label.toLowerCase()} changes` }));
     const tips = [];
@@ -936,19 +1092,30 @@
       sw.rows.map((r, i) => `<tr><td>${Lv.fmt(r.value)}${tips.includes(i) ? ' <span class="pill on">tipping point</span>' : ''}</td><td class="r">${inr(r.total, 2)}</td><td class="r">${r.nOpen}</td><td>${r.open.map(id => esc(dcName(id))).join(', ')}</td><td class="r">${inr(r.kpi.inventoryValue)}</td></tr>`)));
   };
   async function runSweep() {
-    const cfg = App.sweepCfg, Lv = LEVER[cfg.key]; App.sweepStop = false;
+    if (App.sweeping) return App.sweep;
+    const cfg = App.sweepCfg, Lv = LEVER[cfg.key]; App.sweepStop = false; App.sweeping = true;
+    if (App.tab === 'sweep') renderTab();
     const vals = []; for (let i = 0; i < cfg.steps; i++) { const v = cfg.from + (cfg.to - cfg.from) * i / (cfg.steps - 1); vals.push(Lv.step >= 1 ? Math.round(v) : +v.toFixed(4)); }
     const rows = [];
-    for (let i = 0; i < vals.length; i++) {
-      if (App.sweepStop) break;
-      setStatus(`Sweep ${i + 1} of ${vals.length}: ${Lv.label.toLowerCase()} ${Lv.fmt(vals[i])}`, true); await frame();
-      const L = clone(App.draft.levers); L[cfg.key] = vals[i];
-      const r = T.optimize(App.data, App.fc, L);
-      rows.push({ value: vals[i], total: r.total, open: r.open.map(j => App.data.dcs[j].id), nOpen: r.open.length, kpi: r.kpi });
-    }
-    App.sweep = { key: cfg.key, rows };
-    setStatus(App.sweepStop ? `Sweep stopped after ${rows.length} steps` : `Sweep done: ${rows.length} full network solves`);
-    if (App.tab === 'sweep') renderTab();
+    try {
+      await planDone();
+      // every step holds the other levers where the draft had them when the sweep started
+      const ver = App.dataVersion, base = clone(App.draft.levers);
+      for (let i = 0; i < vals.length; i++) {
+        if (App.sweepStop || ver !== App.dataVersion) break;
+        setStatus(`Sweep ${i + 1} of ${vals.length}: ${Lv.label.toLowerCase()} ${Lv.fmt(vals[i])}`, true);
+        const L = clone(base); L[cfg.key] = vals[i];
+        const { res: r } = await Engine.optimize(L);
+        if (ver !== App.dataVersion) break;
+        rows.push({ value: vals[i], total: r.total, open: r.open.map(j => App.data.dcs[j].id), nOpen: r.open.length, kpi: r.kpi });
+      }
+      // a sweep that ran into new data no longer applies; the re-plan has cleared the old one
+      if (ver === App.dataVersion) {
+        App.sweep = { key: cfg.key, rows };
+        setStatus(App.sweepStop ? `Sweep stopped after ${rows.length} steps` : `Sweep done: ${rows.length} full network solves`);
+      }
+    } catch (err) { console.error(err); setStatus('Sweep stopped: ' + (err && err.message || err)); }
+    finally { App.sweeping = false; if (App.tab === 'sweep') renderTab(); }
     return App.sweep;
   }
 
@@ -973,21 +1140,34 @@
   function snapshotData() { if (!App.dirty) dataSnapshot = clone(App.data); }
   function discardData() { if (dataSnapshot) App.data = dataSnapshot; dataSnapshot = null; App.dirty = false; renderTab(); toast('Changes discarded'); }
   async function applyData() {
-    setStatus('Re-forecasting and re-planning with your data…', true); await frame();
+    setStatus('Re-forecasting and re-planning with your data…', true);
     try {
-      App.fc = T.forecast(App.data); App.dataVersion++; App.dirty = false; dataSnapshot = null;
-      logAudit('You', 'Applied data changes'); await rerunAll(); toast('Your data is in the plan');
+      const fresh = await refresh(async () => {
+        await loadData();
+        App.dataVersion++; App.dirty = false; dataSnapshot = null;
+        logAudit('You', 'Applied data changes');
+        return rerunAll();
+      });
+      if (fresh) toast('Your data is in the plan');
     } catch (err) { console.error(err); setStatus('Could not apply: ' + err.message); }
   }
+  // solve the baseline and draft again on the data the engine holds; results for data that has changed since are dropped
   async function rerunAll() {
-    setStatus('Re-planning baseline and draft…', true); await frame();
-    const b = runScenario(App.baseline.levers); App.baseline.result = b.res; App.baseline.sim = b.sim;
-    if (sameLevers(App.draft.levers, App.baseline.levers)) { App.draft.result = b.res; App.draft.sim = b.sim; }
-    else { const d = runScenario(App.draft.levers); App.draft.result = d.res; App.draft.sim = d.sim; }
-    App.fvCache = null; App.sweep = null;
+    const ver = App.dataVersion;
+    setStatus('Re-planning baseline and draft…', true);
+    const bl = clone(App.baseline.levers), b = await runScenario(bl);
+    if (ver !== App.dataVersion) return false;
+    const dl = clone(App.draft.levers), d = sameLevers(dl, bl) ? b : await runScenario(dl);
+    if (ver !== App.dataVersion) return false;
+    App.baseline.result = b.res; App.baseline.sim = b.sim; App.draft.result = d.res; App.draft.sim = d.sim;
+    App.sweep = null;
     MapView.rebuild(); MapView.setResult(App.draft.result, App.draft.levers, null); MapView.replayReveal();
-    renderSummary(); renderTab(); save(); setStatus('Plan updated');
+    save(); setStatus('Plan updated');
+    return true;
   }
+  // send the data as it is now to the engine, re-forecast it and re-solve the baseline and draft
+  function replan() { return refresh(async () => { await loadData(); return rerunAll(); }); }
+  function replanFailed(err) { console.error(err); setStatus('Could not re-plan: ' + (err && err.message || err)); }
   function numInput(obj, key, opts) {
     const o = opts || {}; const disp = o.disp || 1;
     const inp = el('input', { type: 'number', step: 'any', value: +(obj[key] * disp).toFixed(o.dp == null ? 4 : o.dp), 'aria-label': o.label || key });
@@ -1095,8 +1275,9 @@
       const exp = el('button', { class: 'btn small', type: 'button', text: 'Export model', onclick: exportModel });
       const imp = el('button', { class: 'btn small quiet', type: 'button', text: 'Import model', onclick: importModel });
       const reset = el('button', { class: 'btn small quiet', type: 'button', text: 'Reset to demo data', onclick: async () => {
-        App.data = T.defaultData(); App.fc = T.forecast(App.data); App.dataVersion++; App.dirty = false; App.baseline.levers = T.defaultLevers();
-        App.draft = { name: 'Baseline', levers: T.defaultLevers(), origin: 'baseline' }; App.pinned = []; logAudit('You', 'Reset to demo data'); syncLevers(); await rerunAll();
+        App.data = T.defaultData(); App.dataVersion++; App.dirty = false; App.baseline.levers = T.defaultLevers();
+        App.draft = { name: 'Baseline', levers: T.defaultLevers(), origin: 'baseline' }; App.pinned = []; logAudit('You', 'Reset to demo data'); syncLevers();
+        await replan().catch(replanFailed);
       } });
       b.append(el('div', { class: 'controls' }, exp, imp, reset));
     }
@@ -1144,10 +1325,10 @@
     modal('Import model', 'Paste a model exported from Tributary.', '', async (text) => {
       try {
         const obj = JSON.parse(text); if (!obj || obj.app !== 'tributary' || !obj.data) throw new Error('Not a Tributary model');
-        App.data = obj.data; App.fc = T.forecast(App.data); App.dataVersion++;
+        App.data = obj.data; App.dataVersion++;
         App.baseline.levers = normaliseLevers(obj.baselineLevers); App.draft = { name: 'Baseline', levers: clone(App.baseline.levers), origin: 'baseline' };
         App.pinned = (obj.pinned || []).map((p, i) => ({ id: 'pin' + Date.now() + i, name: p.name, levers: normaliseLevers(p.levers), origin: 'manual' }));
-        logAudit('You', 'Imported a model'); syncLevers(); await rerunAll(); toast('Model imported');
+        logAudit('You', 'Imported a model'); syncLevers(); await replan(); toast('Model imported');
         return true;
       } catch (e) { toast('Could not import: ' + e.message); return false; }
     });
@@ -1213,14 +1394,17 @@ lu rerouted to a plant from the start of the outage to week t ≤ spare × weeks
 </ul>`;
 
   /* ================= SCENARIO ACTIONS ================= */
-  function pinDraft() {
+  // both wait for any solve in progress, so a scenario never pairs new levers with an old result
+  async function pinDraft() {
+    await settled();
     const k = App.pinned.length; const letter = String.fromCharCode(65 + (k % 26));
     const name = App.draft.origin === 'copilot' ? App.draft.name : `Scenario ${letter}`;
     App.pinned.push({ id: 'pin' + Date.now(), name, levers: clone(App.draft.levers), result: App.draft.result, sim: App.draft.sim, ver: App.dataVersion, origin: App.draft.origin });
     logAudit('You', `Pinned "${name}"`); save(); toast(`Pinned as ${name}. See it in Compare.`);
     if (App.tab === 'compare') renderTab();
   }
-  function promote(sc) {
+  async function promote(sc) {
+    await settled();
     const src = sc || App.draft;
     if (!sc && sameLevers(App.draft.levers, App.baseline.levers)) { toast('The working draft already matches the baseline'); return; }
     App.baseline = { levers: clone(src.levers), result: src.result, sim: src.sim };
@@ -1333,6 +1517,7 @@ Planner request: ${JSON.stringify(question)}`;
     });
   }
   async function runApproved(prop) {
+    await settled();
     const L = clone(App.baseline.levers);
     for (const c of prop.changes) L[c.lever] = c.value;
     for (const l of prop.locks) { if (l.state === 'auto') delete L.locks[l.dc]; else L.locks[l.dc] = l.state; }
@@ -1417,7 +1602,9 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
   }
   async function askCopilot() {
     const ta = $('#cpInput'); const q = ta.value.trim(); if (!q) return; ta.value = '';
-    addMsg('you', q); logAudit('You', `Asked: "${q.slice(0, 80)}"`);
+    addMsg('you', q);
+    await planDone();   // proposals build on the baseline, so a question asked while the page loads waits for it
+    logAudit('You', `Asked: "${q.slice(0, 80)}"`);
     if (!App.sample) {
       const prop = ruleParse(q);
       if (prop) showProposal(validateProposal(prop), 'Rule-based parser');
@@ -1479,23 +1666,12 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
   function setTopbarVar() { document.documentElement.style.setProperty('--tb', $('#topbar').offsetHeight + 'px'); }
   async function init() {
     readColors(); setTopbarVar();
+    Engine.start();
     const saved = loadSaved();
     App.data = saved && saved.data ? saved.data : T.defaultData();
-    setStatus('Forecasting 2 years of weekly demand…', true); await frame();
-    try { App.fc = T.forecast(App.data); }
-    catch (e) { console.error(e); App.data = T.defaultData(); App.fc = T.forecast(App.data); }
-    const bl = normaliseLevers(saved && saved.baselineLevers);
-    setStatus('Solving the baseline network…', true); await frame();
-    const b = runScenario(bl); App.baseline = { levers: bl, result: b.res, sim: b.sim };
-    if (saved && saved.draft && !sameLevers(normaliseLevers(saved.draft.levers), bl)) {
-      const dl = normaliseLevers(saved.draft.levers); const d = runScenario(dl);
-      App.draft = { name: saved.draft.name || 'Working draft', levers: dl, result: d.res, sim: d.sim, origin: saved.draft.origin || 'manual' };
-    } else App.draft = { name: 'Baseline', levers: clone(bl), result: b.res, sim: b.sim, origin: 'baseline' };
     App.pinned = ((saved && saved.pinned) || []).map(p => ({ id: p.id, name: p.name, levers: normaliseLevers(p.levers), origin: p.origin }));
     App.audit = (saved && saved.audit) || [];
-    renderLevers(); renderSummary(); renderTab(); renderAudit(); quickChips();
-    MapView.resize(); MapView.setResult(App.draft.result, App.draft.levers, null); MapView.replayReveal();
-    setStatus(`Costed ${n0(App.draft.result.search.evaluated)} network designs. Move a lever to re-plan.`);
+    // the page works from the first paint; whatever needs the plan waits for the engine
     $$('#tabs button').forEach(bt => bt.addEventListener('click', () => switchTab(bt.dataset.tab)));
     $('#tabs').addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; const bs = $$('#tabs button'); const i = bs.findIndex(x => x.dataset.tab === App.tab);
@@ -1521,7 +1697,26 @@ Write at most 150 words in 3 or 4 short paragraphs, plain text with no headings,
       window.claude.use('sample').then(s => { App.sample = s || null; setCpStatus(); }).catch(() => { App.sample = null; setCpStatus(); });
       window.claude.use('downloads').then(d => { App.downloads = d || null; }).catch(() => { App.downloads = null; });
     } else setCpStatus();
+    renderAudit();
     if (!seenWelcome()) showWelcome();
+    MapView.resize();
+    try {
+      await refresh(async () => {
+        setStatus('Forecasting 2 years of weekly demand…', true);
+        try { await loadData(); }
+        catch (e) { console.error(e); App.data = T.defaultData(); MapView.rebuild(); await loadData(); }
+        const bl = normaliseLevers(saved && saved.baselineLevers);
+        setStatus('Solving the baseline network…', true);
+        const b = await runScenario(bl); App.baseline = { levers: bl, result: b.res, sim: b.sim };
+        if (saved && saved.draft && !sameLevers(normaliseLevers(saved.draft.levers), bl)) {
+          const dl = normaliseLevers(saved.draft.levers), d = await runScenario(dl);
+          App.draft = { name: saved.draft.name || 'Working draft', levers: dl, result: d.res, sim: d.sim, origin: saved.draft.origin || 'manual' };
+        } else App.draft = { name: 'Baseline', levers: clone(bl), result: b.res, sim: b.sim, origin: 'baseline' };
+      });
+    } catch (err) { console.error(err); setStatus('Could not plan the network: ' + (err && err.message || err)); return; }
+    renderLevers(); quickChips();
+    MapView.setResult(App.draft.result, App.draft.levers, null); MapView.replayReveal();
+    setStatus(`Costed ${n0(App.draft.result.search.evaluated)} network designs. Move a lever to re-plan.`);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
