@@ -75,7 +75,8 @@
   window.__inventory = async function (names) {
     const acc = { states: [], fails: {}, targets: {}, axe: {}, sizes: {}, fams: {} };
     for (const n of names) {
-      if (STATES[n]) await STATES[n](acc);
+      if (typeof n === 'object') { await n.setup(); await sleep(400); measure(document, n.name, acc); await axeRun(document, n.name, acc); }
+      else if (STATES[n]) await STATES[n](acc);
       else { $(`[data-tab="${n}"]`).click(); await sleep(350); measure(document, n, acc); await axeRun(document, n, acc); }
     }
     return {

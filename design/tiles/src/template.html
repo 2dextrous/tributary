@@ -1,0 +1,467 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Tributary style tiles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<style>
+/* Tokens come in two tiers. A direction is only a list of primitives: --l-* for light and --d-* for dark,
+   plus its fonts, type scale and shape. The roles further down map the primitives once, for every direction. */
+:root, :root[data-dir="a"] {
+  --l-bg:#F4F6F9; --l-surface:#FFFFFF; --l-surface2:#EDF1F6; --l-line:#DCE2EA; --l-edge:transparent; --l-text:#0F1729; --l-text2:#3C4859; --l-text3:#556070;
+  --l-accent:#0F1729; --l-onaccent:#FFFFFF; --l-land:#E9EEF4; --l-coast:#C3CDD9; --l-sea:#FFFFFF; --l-flow:#2563EB; --l-plant:#0F1729; --l-dc:#EA580C; --l-idle:#64748B; --l-demand:#64748B;
+  --l-good:#15803D; --l-bad:#B91C1C; --l-c1:#2563EB; --l-c2:#EA580C; --l-c3:#0F1729; --l-c4:#64748B; --l-shadow:0 1px 2px rgb(15 23 41/.06),0 12px 32px -16px rgb(15 23 41/.25);
+  --d-bg:#0D1117; --d-surface:#151B24; --d-surface2:#1E2632; --d-line:#2B3443; --d-edge:#2B3443; --d-text:#E9EEF5; --d-text2:#B6C1CF; --d-text3:#8F9BAB;
+  --d-accent:#E9EEF5; --d-onaccent:#0D1117; --d-land:#1A222D; --d-coast:#3B4758; --d-sea:#151B24; --d-flow:#60A5FA; --d-plant:#E5E7EB; --d-dc:#FB923C; --d-idle:#94A3B8; --d-demand:#94A3B8;
+  --d-good:#4ADE80; --d-bad:#F87171; --d-c1:#60A5FA; --d-c2:#FB923C; --d-c3:#E5E7EB; --d-c4:#94A3B8; --d-shadow:none;
+  --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; --font-num:var(--font-ui); --font-display:var(--font-ui);
+  --w-display:700; --track:-0.025em; --radius:14px; --radius-sm:10px;
+  --t-xs:12px; --t-sm:13px; --t-md:15px; --t-lg:19px; --t-xl:24px; --t-2xl:30px; --t-hero:56px;
+}
+:root[data-dir="b"] {
+  --l-bg:#F2F5F9; --l-surface:#FFFFFF; --l-surface2:#E8EDF4; --l-line:#D3DBE6; --l-edge:#D3DBE6; --l-text:#0A0F1A; --l-text2:#34425A; --l-text3:#50607A;
+  --l-accent:#0E7490; --l-onaccent:#FFFFFF; --l-land:#E3E9F1; --l-coast:#A9B6C8; --l-sea:#F2F5F9; --l-flow:#0E7490; --l-plant:#BE185D; --l-dc:#B45309; --l-idle:#64748B; --l-demand:#475569;
+  --l-good:#047857; --l-bad:#B91C1C; --l-c1:#0E7490; --l-c2:#B45309; --l-c3:#BE185D; --l-c4:#6D28D9; --l-shadow:none;
+  --d-bg:#0A0F1A; --d-surface:#0F1726; --d-surface2:#16213A; --d-line:#22314D; --d-edge:#22314D; --d-text:#E6EDF7; --d-text2:#A8B7CB; --d-text3:#8597AF;
+  --d-accent:#22D3EE; --d-onaccent:#04121C; --d-land:#111B2D; --d-coast:#2A3B5A; --d-sea:#0A0F1A; --d-flow:#22D3EE; --d-plant:#F472B6; --d-dc:#FBBF24; --d-idle:#8597AF; --d-demand:#94A3B8;
+  --d-good:#34D399; --d-bad:#F87171; --d-c1:#22D3EE; --d-c2:#FBBF24; --d-c3:#F472B6; --d-c4:#A78BFA; --d-shadow:none;
+  --font-ui:"IBM Plex Sans",system-ui,sans-serif; --font-num:"IBM Plex Mono",ui-monospace,monospace; --font-display:"IBM Plex Mono",ui-monospace,monospace;
+  --w-display:500; --track:-0.02em; --radius:6px; --radius-sm:6px;
+  --t-xs:12px; --t-sm:13px; --t-md:15px; --t-lg:18px; --t-xl:22px; --t-2xl:26px; --t-hero:48px;
+}
+:root[data-dir="c"] {
+  --l-bg:#F1F2EA; --l-surface:#FAFBF6; --l-surface2:#E6E9DB; --l-line:#CFD4BF; --l-edge:transparent; --l-text:#1B1F17; --l-text2:#434A3A; --l-text3:#586049;
+  --l-accent:#1F4E79; --l-onaccent:#FFFFFF; --l-land:#E2E6C8; --l-coast:#8C9A6E; --l-sea:#E4ECEE; --l-flow:#1F4E79; --l-plant:#1B1F17; --l-dc:#C1272D; --l-idle:#6B7258; --l-demand:#6B7258;
+  --l-good:#2E6B34; --l-bad:#C1272D; --l-c1:#1F4E79; --l-c2:#C1272D; --l-c3:#8A6D1E; --l-c4:#5E7A4A; --l-shadow:none;
+  --d-bg:#121510; --d-surface:#181C15; --d-surface2:#22271D; --d-line:#343B2C; --d-edge:transparent; --d-text:#E9EBE0; --d-text2:#C2C7B4; --d-text3:#9EA58F;
+  --d-accent:#8DB8E8; --d-onaccent:#121510; --d-land:#1F2419; --d-coast:#4F5A3F; --d-sea:#141A1C; --d-flow:#8DB8E8; --d-plant:#E9EBE0; --d-dc:#F0766B; --d-idle:#9EA58F; --d-demand:#9EA58F;
+  --d-good:#8FCB86; --d-bad:#F0766B; --d-c1:#8DB8E8; --d-c2:#F0766B; --d-c3:#D6B45A; --d-c4:#9DBB82; --d-shadow:none;
+  --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; --font-num:"Newsreader",Georgia,serif; --font-display:"Newsreader",Georgia,serif;
+  --w-display:500; --track:-0.015em; --radius:3px; --radius-sm:3px;
+  --t-xs:12px; --t-sm:13px; --t-md:15px; --t-lg:20px; --t-xl:27px; --t-2xl:36px; --t-hero:64px;
+}
+/* roles: what the page actually uses */
+:root {
+  color-scheme: light;
+  --bg:var(--l-bg); --surface:var(--l-surface); --surface2:var(--l-surface2); --line:var(--l-line); --edge:var(--l-edge); --text:var(--l-text); --text2:var(--l-text2); --text3:var(--l-text3);
+  --accent:var(--l-accent); --onaccent:var(--l-onaccent); --land:var(--l-land); --coast:var(--l-coast); --sea:var(--l-sea); --flow:var(--l-flow); --plant:var(--l-plant); --dc:var(--l-dc); --idle:var(--l-idle); --demand:var(--l-demand);
+  --good:var(--l-good); --bad:var(--l-bad); --c1:var(--l-c1); --c2:var(--l-c2); --c3:var(--l-c3); --c4:var(--l-c4); --shadow:var(--l-shadow);
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --dur:320ms; --ease:cubic-bezier(.2,.7,.2,1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg:var(--d-bg); --surface:var(--d-surface); --surface2:var(--d-surface2); --line:var(--d-line); --edge:var(--d-edge); --text:var(--d-text); --text2:var(--d-text2); --text3:var(--d-text3);
+    --accent:var(--d-accent); --onaccent:var(--d-onaccent); --land:var(--d-land); --coast:var(--d-coast); --sea:var(--d-sea); --flow:var(--d-flow); --plant:var(--d-plant); --dc:var(--d-dc); --idle:var(--d-idle); --demand:var(--d-demand);
+    --good:var(--d-good); --bad:var(--d-bad); --c1:var(--d-c1); --c2:var(--d-c2); --c3:var(--d-c3); --c4:var(--d-c4); --shadow:var(--d-shadow);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:var(--d-bg); --surface:var(--d-surface); --surface2:var(--d-surface2); --line:var(--d-line); --edge:var(--d-edge); --text:var(--d-text); --text2:var(--d-text2); --text3:var(--d-text3);
+  --accent:var(--d-accent); --onaccent:var(--d-onaccent); --land:var(--d-land); --coast:var(--d-coast); --sea:var(--d-sea); --flow:var(--d-flow); --plant:var(--d-plant); --dc:var(--d-dc); --idle:var(--d-idle); --demand:var(--d-demand);
+  --good:var(--d-good); --bad:var(--d-bad); --c1:var(--d-c1); --c2:var(--d-c2); --c3:var(--d-c3); --c4:var(--d-c4); --shadow:var(--d-shadow);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--t-md)/1.5 var(--font-ui); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p, dl, dd, ul { margin: 0; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 0 112px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 72px; }
+.brand { font: var(--w-display) var(--t-xl)/1 var(--font-display); letter-spacing: var(--track); }
+.brand span { display: block; margin-top: var(--s1); font: 500 var(--t-sm)/1.3 var(--font-ui); letter-spacing: 0; color: var(--text3); }
+.btn { min-height: 44px; padding: 0 var(--s4); border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: var(--t-sm); font-weight: 600; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--onaccent); }
+
+.hero { display: grid; gap: var(--s4); }
+.card { background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--s5) var(--s4); }
+h2 { font: 600 var(--t-md)/1.3 var(--font-ui); }
+.kicker { font-size: var(--t-sm); font-weight: 600; color: var(--text2); }
+.cost { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--s2); margin-top: var(--s2); }
+.cost .num { font: var(--w-display) var(--t-hero)/1 var(--font-num); letter-spacing: var(--track); font-variant-numeric: tabular-nums; }
+.cost .unit { font-size: var(--t-lg); color: var(--text2); font-weight: 500; }
+.sub { margin-top: var(--s2); color: var(--text2); font-size: var(--t-sm); }
+.delta { display: inline-flex; align-items: center; min-height: 32px; margin-top: var(--s3); padding: 4px 12px; border-radius: 999px; background: var(--surface2); color: var(--text2); font-size: var(--t-sm); font-weight: 600; }
+.delta.up { color: var(--bad); } .delta.down { color: var(--good); }
+.warn { margin-top: var(--s3); color: var(--bad); font-size: var(--t-sm); font-weight: 600; }
+.try { margin-top: var(--s5); font-size: var(--t-sm); font-weight: 600; color: var(--text2); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
+.chip { min-height: 44px; padding: 0 var(--s4); border-radius: 999px; border: 1px solid var(--line); background: var(--surface2); color: var(--text); font-size: var(--t-sm); font-weight: 600; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--onaccent); }
+
+.map-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
+.mapbox { position: relative; aspect-ratio: 1 / 1.08; border-radius: calc(var(--radius) - 4px); background: var(--sea); overflow: hidden; }
+#svg { position: absolute; inset: 0; display: block; }
+.land { fill: var(--land); stroke: var(--coast); stroke-width: 1; stroke-linejoin: round; }
+.flow { fill: none; stroke: var(--flow); stroke-linecap: round; }
+.flow.s { opacity: .45; } .flow.p { opacity: .9; }
+.pulse { fill: none; stroke: var(--sea); stroke-linecap: round; stroke-dasharray: 2 18; opacity: .8; animation: run 1.4s linear infinite; }
+@keyframes run { to { stroke-dashoffset: -40; } }
+.still .pulse, .still .kicker::before { animation-play-state: paused; }
+.demand { fill: var(--demand); }
+.plant { fill: var(--plant); stroke: var(--sea); stroke-width: 1.5; }
+.dc { fill: var(--sea); stroke: var(--idle); stroke-width: 1.5; }
+.dc.open { fill: var(--dc); stroke: var(--sea); }
+.ring { fill: none; stroke: var(--dc); stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: ring 1.4s var(--ease) 2 forwards; }
+@keyframes ring { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(2.6); } }
+.focus { display: none; fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.lb { font: 600 var(--t-xs)/1 var(--font-ui); fill: var(--text); paint-order: stroke; stroke: var(--land); stroke-width: 3.5px; stroke-linejoin: round; }
+.lb.idle { font-weight: 500; fill: var(--text2); }
+.annot { display: none; margin-top: var(--s3); font: italic 500 var(--t-md)/1.4 var(--font-display); }
+.legend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-top: var(--s3); padding: 0; list-style: none; font-size: var(--t-sm); color: var(--text2); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { width: 14px; height: 14px; overflow: visible; }
+
+.lever { display: block; padding-top: var(--s3); }
+.lever-top { display: flex; justify-content: space-between; gap: var(--s2); font-weight: 600; }
+.lever output { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.hint { display: block; color: var(--text3); font-size: var(--t-sm); }
+input[type="range"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 44px; margin: 0; background: transparent; cursor: pointer; }
+input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--idle) var(--fill, 50%)); }
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--idle); }
+input[type="range"]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; margin-top: -9px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); box-shadow: 0 1px 3px rgb(0 0 0/.3); }
+input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); }
+
+.kpis dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+.kpis dt { font-size: var(--t-sm); color: var(--text2); }
+.kpis dd { margin-top: var(--s1); font: var(--w-display) var(--t-xl)/1.1 var(--font-num); letter-spacing: var(--track); font-variant-numeric: tabular-nums; }
+.bars { display: grid; gap: var(--s3); margin-top: var(--s4); }
+.bar-row { display: grid; grid-template-columns: minmax(130px, 30%) 1fr auto; align-items: center; gap: var(--s3); font-size: var(--t-sm); }
+.bar-track { height: 12px; border-radius: 6px; background: var(--surface2); overflow: hidden; }
+.bar { display: block; height: 100%; border-radius: inherit; background: var(--c1); }
+.moved .bar { background: var(--c2); }
+.bar-val { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; white-space: nowrap; }
+.bar-val small { display: block; font-size: var(--t-xs); }
+.bar-val .up { color: var(--bad); } .bar-val .down { color: var(--good); }
+
+.notes { margin-top: var(--s7); padding-top: var(--s5); border-top: 1px solid var(--line); }
+.notes h2 { font: var(--w-display) var(--t-2xl)/1.1 var(--font-display); letter-spacing: var(--track); }
+.notes .lead { margin-top: var(--s2); max-width: 70ch; color: var(--text2); }
+.note-grid { display: grid; gap: var(--s5); margin-top: var(--s5); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.notes h3 { margin-bottom: var(--s2); font-size: var(--t-md); }
+.notes p, .notes li { color: var(--text2); font-size: var(--t-sm); }
+.notes ul { padding-left: 18px; display: grid; gap: var(--s2); }
+.notes table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+.notes th, .notes td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.notes small { font-size: var(--t-xs); color: var(--text3); }
+.sw { display: inline-block; width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; border-radius: 3px; border: 1px solid var(--line); }
+.ok { color: var(--good); font-weight: 600; } .no { color: var(--bad); font-weight: 600; }
+
+/* direction B: an operations room */
+[data-dir="b"] .kicker, [data-dir="b"] h2, [data-dir="b"] .chip, [data-dir="b"] .kpis dt, [data-dir="b"] .try { font-family: var(--font-num); font-weight: 500; }
+[data-dir="b"] .kicker::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--good); vertical-align: 1px; animation: live 2s ease-out infinite; }
+@keyframes live { 0% { box-shadow: 0 0 0 0 var(--good); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+[data-dir="b"] .chip { border-radius: var(--radius-sm); }
+[data-dir="b"] .mapbox { background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 20px 20px; }
+[data-dir="b"][data-theme="dark"] .flow.p { filter: drop-shadow(0 0 4px var(--flow)); }
+/* direction C: a data-journalism graphic */
+[data-dir="c"] .card { padding: var(--s4) 0 var(--s2); background: none; border: 0; border-top: 2px solid var(--text); border-radius: 0; box-shadow: none; }
+[data-dir="c"] h2 { font: 600 var(--t-lg)/1.2 var(--font-display); }
+[data-dir="c"] .kicker { font: italic 500 var(--t-lg)/1.3 var(--font-display); }
+[data-dir="c"] .brand { font-style: italic; }
+[data-dir="c"] .delta { padding: 0; background: none; border-radius: 0; }
+[data-dir="c"] .chip { border-radius: 0; border-width: 0 0 2px; border-color: var(--line); background: none; padding: 0 var(--s1); }
+[data-dir="c"] .chip[aria-pressed="true"] { background: none; border-color: var(--accent); color: var(--accent); }
+[data-dir="c"] .mapbox { border-radius: 0; }
+[data-dir="c"] .pulse, [data-dir="c"] #motion { display: none; }
+[data-dir="c"] .annot, [data-dir="c"] .focus { display: block; }
+
+@media (min-width: 960px) {
+  .wrap { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); }
+  .hero { grid-template-columns: minmax(340px, 400px) 1fr; grid-template-areas: "head map" "levers map" "kpis map" "chart chart"; align-items: start; gap: var(--s5); }
+  .head { grid-area: head; } .map { grid-area: map; } .levers { grid-area: levers; } .kpis { grid-area: kpis; } .chart { grid-area: chart; }
+  .card { padding: var(--s5); }
+  .mapbox { aspect-ratio: auto; height: min(74vh, 700px); }
+}
+@media (max-width: 520px) {
+  .bar-row { grid-template-columns: 1fr auto; } .bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* tile controls: deliberately neutral, so testers do not read them as part of a design */
+.tilebar { position: fixed; z-index: 50; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #111418; color: #FFFFFF; box-shadow: 0 8px 30px rgb(0 0 0/.35); font: 600 14px/1 system-ui, -apple-system, sans-serif; white-space: nowrap; }
+.tilebar button, .tilebar a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: #FFFFFF; font: inherit; text-decoration: none; cursor: pointer; }
+.tilebar [aria-pressed="true"] { background: #FFFFFF; color: #111418; }
+.tilebar :focus-visible { outline-color: #FFFFFF; }
+.tb-name { padding: 0 10px 0 14px; color: #C9CED6; }
+.tb-sep { width: 1px; height: 24px; margin: 0 4px; background: #3A3F47; }
+@media (max-width: 480px) { .tb-name { display: none; } }
+.toast { position: fixed; z-index: 60; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 32px); transform: translateX(-50%); padding: 10px 16px; border-radius: 10px; background: #111418; color: #FFFFFF; font: 500 14px/1.4 system-ui, sans-serif; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .pulse, #motion { display: none !important; }
+}
+</style>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">Tributary<span>Supply chain twin for India</span></div>
+    <button class="btn primary" id="copilot" type="button">Ask the copilot</button>
+  </header>
+  <main class="hero">
+    <section class="card head" aria-labelledby="k-cost">
+      <p class="kicker" id="k-cost">Cost to run the network</p>
+      <p class="cost"><span class="num" id="cost">₹0</span><span class="unit">cr a year</span></p>
+      <p class="sub" id="sub"></p>
+      <p class="delta" id="delta" aria-live="polite"></p>
+      <p class="warn" id="warn" hidden></p>
+      <p class="try" id="try-label">Try a change</p>
+      <div class="chips" role="group" aria-labelledby="try-label">
+        <button class="chip" type="button" data-f="1.2" data-g="0">Diesel up 20%</button>
+        <button class="chip" type="button" data-f="1" data-g="0.2">Demand up 20%</button>
+        <button class="chip" type="button" data-f="1.5" data-g="0.4">Boom and dear diesel</button>
+        <button class="chip" type="button" data-f="1" data-g="0">Today</button>
+      </div>
+    </section>
+    <section class="card map" aria-labelledby="h-map">
+      <div class="map-head"><h2 id="h-map">Where goods flow</h2><button class="btn" id="motion" type="button" aria-pressed="false">Pause motion</button></div>
+      <div class="mapbox" id="mapbox">
+        <svg id="svg" role="img" aria-labelledby="map-title"><title id="map-title"></title><path class="land" id="land"/><g id="g-flows"></g><g id="g-nodes"></g><g id="g-labels"></g><g id="g-annot"></g></svg>
+      </div>
+      <p class="annot" id="annot"></p>
+      <ul class="legend">
+        <li><svg viewBox="0 0 14 14" aria-hidden="true"><rect class="plant" x="2" y="2" width="10" height="10"/></svg>Plant</li>
+        <li><svg viewBox="0 0 14 14" aria-hidden="true"><path class="dc open" d="M7 0L14 7L7 14L0 7Z"/></svg>DC in use</li>
+        <li><svg viewBox="0 0 14 14" aria-hidden="true"><path class="dc" d="M7 1L13 7L7 13L1 7Z"/></svg>DC not used</li>
+        <li><svg viewBox="0 0 14 14" aria-hidden="true"><circle class="demand" cx="7" cy="7" r="4"/></svg>Demand point</li>
+        <li><svg viewBox="0 0 14 14" aria-hidden="true"><path class="flow p" d="M1 11Q7 1 13 11" style="stroke-width:2.5px"/></svg>Goods flow</li>
+      </ul>
+    </section>
+    <section class="card levers" aria-labelledby="h-tune">
+      <h2 id="h-tune">Fine-tune</h2>
+      <label class="lever"><span class="lever-top"><span>Freight rates</span><output id="fr-out" for="fr"></output></span><input type="range" id="fr" min="0" max="8" step="1"><span class="hint">Diesel and carrier rates against today</span></label>
+      <label class="lever"><span class="lever-top"><span>Demand against forecast</span><output id="dm-out" for="dm"></output></span><input type="range" id="dm" min="0" max="6" step="1"><span class="hint">Sales above or below the forecast for the year</span></label>
+    </section>
+    <section class="card kpis" aria-label="Key figures">
+      <dl>
+        <div><dt>Fill rate, simulated</dt><dd id="k-fill"></dd></div>
+        <div><dt>DCs in use</dt><dd id="k-dcs"></dd></div>
+        <div><dt>Stock held</dt><dd id="k-inv"></dd></div>
+      </dl>
+    </section>
+    <section class="card chart" aria-labelledby="h-money">
+      <h2 id="h-money">Where the money goes</h2>
+      <p class="hint" id="chart-note"></p>
+      <div class="bars" id="bars" role="list"></div>
+    </section>
+  </main>
+  <section class="notes" id="notes" aria-labelledby="h-notes">
+    <h2 id="h-notes">Design notes</h2>
+    <p class="lead">Three candidate looks for the same screen. Every number is real: each slider step is a scenario the engine solved in advance. Switch looks with A, B and C at the bottom of the screen.</p>
+    <div class="note-grid">
+      <div><h3>Brand attributes</h3>
+        <ul>
+          <li><b>Credible.</b> Planner-grade numbers, honest labels, nothing decorative that could be mistaken for data.</li>
+          <li><b>Clear.</b> One headline figure, one obvious first move, plain words first and detail on request.</li>
+          <li><b>Alive.</b> The network visibly responds the moment you change something.</li>
+          <li><b>Rooted.</b> India's real map and cities, priced in rupees and crore.</li>
+        </ul>
+      </div>
+      <div><h3 id="dir-name"></h3><p id="dir-about"></p><p id="dir-fonts" style="margin-top:8px"></p></div>
+      <div><h3>Type scale</h3><table id="type-table"></table></div>
+      <div><h3>Colour roles and contrast</h3><table id="role-table"></table></div>
+      <div><h3>Chart colours</h3><p id="palette"></p><p style="margin-top:8px">Every bar is labelled, so colour only adds emphasis: one colour for bars and a second for the bar that moved most.</p></div>
+      <div><h3>Map</h3><p>India's outline follows Natural Earth's India point-of-view edition (public domain), simplified with mapshaper to 9 KB. Flow width grows with volume. Labels never overlap; candidate DCs give way first.</p></div>
+    </div>
+  </section>
+</div>
+<nav class="tilebar" aria-label="Style tile controls">
+  <span class="tb-name" id="tb-name"></span>
+  <button type="button" data-dir="a" aria-label="Direction A, Clear">A</button>
+  <button type="button" data-dir="b" aria-label="Direction B, Night shift">B</button>
+  <button type="button" data-dir="c" aria-label="Direction C, Atlas">C</button>
+  <span class="tb-sep" aria-hidden="true"></span>
+  <button type="button" id="theme"></button>
+  <a href="#notes">Notes</a>
+</nav>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(() => {
+  'use strict';
+  const D = /*@DATA@*/null, RINGS = /*@OUTLINE@*/null;
+  const $ = (s) => document.querySelector(s), root = document.documentElement, NS = 'http://www.w3.org/2000/svg';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const DIRS = {
+    a: { name: 'A · Clear', mode: 'light', fonts: null, about: 'Calm and precise, like a modern planning product. The interface is ink on white, so the network carries the colour: blue for goods on the move, orange for the DCs the model chose. System fonts load instantly on every phone.' },
+    b: { name: 'B · Night shift', mode: 'dark', fonts: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap', about: 'An operations room after dark. Routes glow on a dark map and figures sit in a monospaced face, like instruments. Built dark first, with a daytime version on the same structure.' },
+    c: { name: 'C · Atlas', mode: 'light', fonts: 'https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap', about: 'Styled after Survey of India topographic sheets: pale olive land, a blue-tinted sea, survey-red DCs and ink lettering, with ruled sections and a caption that says what changed on the map.' }
+  };
+  const COMP = ['Last-mile delivery', 'DC rent and staff', 'Returns', 'Holding stock', 'Line-haul trucking', 'Plant dispatch', 'DC handling', 'Ordering', 'Lost sales'];
+  const S = { fi: D.F.indexOf(1), gi: D.G.indexOf(0), dir: 'a', theme: null };
+  const at = (fi, gi) => D.grid[D.F[fi] + '|' + D.G[gi]];
+  const now = () => at(S.fi, S.gi), today = () => at(D.F.indexOf(1), D.G.indexOf(0));
+  const crore = (k) => k / 1e4;   // the data holds money in thousands of rupees
+  const fmt = (k) => '₹' + crore(k).toFixed(1) + ' cr';
+  const signed = (v) => (v > 0 ? '+' : '−') + Math.round(Math.abs(v) * 100) + '%';
+  const list = (a) => (a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0]);
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.append(e); return e; };
+
+  /* headline figure, with a short count to the new value */
+  let shown = null, tween = 0;
+  function setCost(k) {
+    const el = $('#cost'), to = crore(k), from = shown == null ? to : shown, id = ++tween;
+    const put = (v) => { el.textContent = '₹' + v.toFixed(1); };
+    shown = to;
+    setTimeout(() => { if (id === tween) put(to); }, 520);   // lands even when animation frames are paused
+    if (reduce.matches || from === to) return put(to);
+    const t0 = performance.now(), run = (t) => { if (id !== tween) return; const p = Math.min(1, (t - t0) / 480); put(from + (to - from) * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(run); };
+    requestAnimationFrame(run);
+  }
+  function renderNumbers() {
+    const r = now(), b = today(), dk = r.t - b.t, same = Math.abs(dk) < 50;
+    setCost(r.t);
+    $('#sub').textContent = `to make, move, store and take back ${(r.units / 1e5).toFixed(1)} lakh units`;
+    const d = $('#delta');
+    d.className = 'delta' + (same ? '' : dk > 0 ? ' up' : ' down');
+    d.textContent = same ? 'Same as today' : `${dk > 0 ? '▲' : '▼'} ${fmt(Math.abs(dk))} against today (${dk > 0 ? '+' : '−'}${(Math.abs(dk) / b.t * 100).toFixed(1)}%)`;
+    const w = $('#warn'); w.hidden = r.un < 0.005; w.textContent = `${(r.un * 100).toFixed(1)}% of demand can't be served at these settings`;
+    $('#k-fill').textContent = (r.fill * 100).toFixed(1) + '%'; $('#k-dcs').textContent = r.o.length; $('#k-inv').textContent = fmt(r.inv);
+    const fr = $('#fr'), dm = $('#dm'), fv = D.F[S.fi], gv = D.G[S.gi];
+    fr.value = S.fi; dm.value = S.gi;
+    $('#fr-out').textContent = Math.abs(fv - 1) < 1e-9 ? 'Today' : signed(fv - 1);
+    $('#dm-out').textContent = gv === 0 ? 'As forecast' : signed(gv);
+    fr.setAttribute('aria-valuetext', $('#fr-out').textContent); dm.setAttribute('aria-valuetext', $('#dm-out').textContent);
+    fr.style.setProperty('--fill', S.fi / (D.F.length - 1) * 100 + '%'); dm.style.setProperty('--fill', S.gi / (D.G.length - 1) * 100 + '%');
+    document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(+c.dataset.f === fv && +c.dataset.g === gv)));
+    renderBars();
+  }
+  function renderBars() {
+    const r = now(), b = today(), rows = r.c.map((v, i) => ({ name: COMP[i], v, dv: v - b.c[i] })).sort((x, y) => y.v - x.v);
+    const top = rows.slice(0, 5), rest = rows.slice(5);
+    top.push({ name: 'Everything else', v: rest.reduce((a, x) => a + x.v, 0), dv: rest.reduce((a, x) => a + x.dv, 0) });
+    const max = Math.max(...top.map(x => x.v)), big = top.reduce((m, x) => (Math.abs(x.dv) > Math.abs(m.dv) ? x : m), { dv: 0 });
+    const moved = Math.abs(big.dv) >= 0.01 * b.t ? big : null;
+    $('#chart-note').textContent = moved ? `${moved.name} moved most against today.` : 'The same mix as today.';
+    $('#bars').innerHTML = top.map(x => `<div class="bar-row${x === moved ? ' moved' : ''}" role="listitem"><span>${x.name}</span><span class="bar-track"><span class="bar" style="width:${(x.v / max * 100).toFixed(1)}%"></span></span><span class="bar-val">${fmt(x.v)}${x === moved ? `<small class="${x.dv > 0 ? 'up' : 'down'}">${x.dv > 0 ? '+' : '−'}${fmt(Math.abs(x.dv))}</small>` : ''}</span></div>`).join('');
+  }
+
+  /* map: drawn in screen pixels so labels keep their real size on every screen */
+  const svg = $('#svg'), gF = $('#g-flows'), gN = $('#g-nodes'), gL = $('#g-labels'), gA = $('#g-annot'), measure = document.createElement('canvas').getContext('2d');
+  let W = 0, H = 0, X = null, Y = null, lastOpen = null;
+  function project() {
+    const box = $('#mapbox').getBoundingClientRect(); W = Math.max(200, box.width); H = Math.max(200, box.height);
+    const x0 = 68.16, x1 = 97.33, y0 = 6.8, y1 = 37.05, k = Math.cos(22 * Math.PI / 180), pad = 14;
+    const s = Math.min((W - 2 * pad) / ((x1 - x0) * k), (H - 2 * pad) / (y1 - y0)), ox = (W - (x1 - x0) * k * s) / 2, oy = (H - (y1 - y0) * s) / 2;
+    X = (lon) => ox + (lon - x0) * k * s; Y = (lat) => oy + (y1 - lat) * s;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('width', W); svg.setAttribute('height', H);
+    $('#land').setAttribute('d', RINGS.map(r => { let d = ''; for (let i = 0; i < r.length; i += 2) d += (i ? 'L' : 'M') + X(r[i]).toFixed(1) + ' ' + Y(r[i + 1]).toFixed(1); return d + 'Z'; }).join(''));
+  }
+  function drawNet() {
+    if (!X) return;
+    const r = now(), open = new Set(r.o), prev = lastOpen;
+    gF.replaceChildren(); gN.replaceChildren();
+    const maxP = Math.max(1, ...r.p.map(l => l[2])), maxS = Math.max(1, ...r.s.map(l => l[2]));
+    const curve = (a, b, bend) => { const ax = X(a[2]), ay = Y(a[1]), bx = X(b[2]), by = Y(b[1]), dx = bx - ax, dy = by - ay; return `M${ax.toFixed(1)} ${ay.toFixed(1)}Q${((ax + bx) / 2 - dy * bend).toFixed(1)} ${((ay + by) / 2 + dx * bend).toFixed(1)} ${bx.toFixed(1)} ${by.toFixed(1)}`; };
+    for (const [di, ci, v] of r.s) mk('path', { d: curve(D.dcs[di], D.cust[ci], 0.14), class: 'flow s', style: `stroke-width:${(0.75 + 2.25 * Math.sqrt(v / maxS)).toFixed(2)}px` }, gF);
+    for (const [pi, di, v] of r.p) {
+      const d = curve(D.plants[pi], D.dcs[di], 0.1), w = 1.5 + 5 * Math.sqrt(v / maxP);
+      mk('path', { d, class: 'flow p', style: `stroke-width:${w.toFixed(2)}px` }, gF);
+      mk('path', { d, class: 'pulse', style: `stroke-width:${Math.max(1, w - 1.5).toFixed(2)}px` }, gF);
+    }
+    const maxW = Math.max(...D.cust.map(c => c[3]));
+    for (const c of D.cust) mk('circle', { cx: X(c[2]).toFixed(1), cy: Y(c[1]).toFixed(1), r: (1.8 + 3 * Math.sqrt(c[3] / maxW)).toFixed(1), class: 'demand' }, gN);
+    D.dcs.forEach((d, j) => {
+      const x = X(d[2]), y = Y(d[1]), on = open.has(j), s = on ? 7.5 : 6;
+      mk('path', { d: `M${x.toFixed(1)} ${(y - s).toFixed(1)}L${(x + s).toFixed(1)} ${y.toFixed(1)}L${x.toFixed(1)} ${(y + s).toFixed(1)}L${(x - s).toFixed(1)} ${y.toFixed(1)}Z`, class: on ? 'dc open' : 'dc' }, gN);
+      if (prev && prev.has(j) !== on && !reduce.matches) mk('circle', { cx: x, cy: y, r: 9, class: 'ring' }, gN);
+    });
+    for (const p of D.plants) mk('rect', { x: (X(p[2]) - 6).toFixed(1), y: (Y(p[1]) - 6).toFixed(1), width: 12, height: 12, class: 'plant' }, gN);
+    lastOpen = open;
+    placeLabels(open); annotate(open);
+    const names = r.o.map(j => D.dcs[j][0]);
+    $('#map-title').textContent = `Map of India. ${names.length} distribution centres in use: ${names.join(', ')}. ${D.plants.length} plants supply them, and they serve ${D.cust.length} demand points${r.un >= 0.005 ? `; ${(r.un * 100).toFixed(1)}% of demand goes unserved` : ''}.`;
+  }
+  // plants and DCs in use always get a label; candidate DCs only where there is room
+  function placeLabels(open) {
+    gL.replaceChildren();
+    const cs = getComputedStyle(root), font = cs.getPropertyValue('--font-ui').trim(), fs = parseFloat(cs.getPropertyValue('--t-xs')) || 12;
+    const items = [...D.plants.map(p => ({ n: p[0], x: X(p[2]), y: Y(p[1]), pri: 0 })), ...D.dcs.map((d, j) => ({ n: d[0], x: X(d[2]), y: Y(d[1]), pri: open.has(j) ? 1 : 2 }))];
+    const marks = items.map(it => ({ x: it.x - 8, y: it.y - 8, w: 16, h: 16 }));
+    const area = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    const placed = [];
+    for (const it of items.sort((a, b) => a.pri - b.pri)) {
+      measure.font = `${it.pri < 2 ? 600 : 500} ${fs}px ${font}`;
+      const w = measure.measureText(it.n).width + 4, h = fs + 4, g = 10;
+      const cands = [[g, -h / 2], [-g - w, -h / 2], [-w / 2, -g - h], [-w / 2, g], [g, -h], [g, 0], [-g - w, -h], [-g - w, 0]].map(([dx, dy]) => ({ x: it.x + dx, y: it.y + dy, w, h }));
+      const cost = (b) => placed.reduce((a, p) => a + 4 * area(b, p), 0) + marks.reduce((a, m) => a + area(b, m), 0) + (b.x < 2 || b.y < 2 || b.x + b.w > W - 2 || b.y + b.h > H - 2 ? 1e6 : 0);
+      let best = cands.find(b => cost(b) === 0);
+      if (!best) { if (it.pri === 2) continue; best = cands.reduce((m, b) => (cost(b) < cost(m) ? b : m)); }
+      placed.push(best);
+      mk('text', { x: (best.x + 2).toFixed(1), y: (best.y + h / 2).toFixed(1), class: 'lb' + (it.pri === 2 ? ' idle' : ''), 'dominant-baseline': 'central' }, gL).textContent = it.n;
+    }
+    let overlaps = 0;
+    for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) if (area(placed[i], placed[j]) > 0) overlaps++;
+    window.__labelOverlaps = overlaps;   // read by the design audit; must stay 0
+  }
+  // direction C writes a caption about the map: what changed, or which DC carries the most
+  function annotate(open) {
+    gA.replaceChildren();
+    const r = now(), base = new Set(today().o), opened = r.o.filter(j => !base.has(j)), closed = [...base].filter(j => !open.has(j));
+    let j, text;
+    if (opened.length) { j = opened[0]; text = `${list(opened.map(i => D.dcs[i][0]))} ${opened.length > 1 ? 'open' : 'opens'} at these settings.`; }
+    else if (closed.length) { j = closed[0]; text = `${list(closed.map(i => D.dcs[i][0]))} ${closed.length > 1 ? 'close' : 'closes'} at these settings.`; }
+    else {
+      const best = {}, count = {};
+      for (const [di, ci, v] of r.s) if (!best[ci] || v > best[ci][1]) best[ci] = [di, v];
+      for (const ci in best) count[best[ci][0]] = (count[best[ci][0]] || 0) + 1;
+      j = +Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+      text = `${D.dcs[j][0]} serves ${count[j]} of ${D.cust.length} demand points, more than any other DC.`;
+    }
+    mk('circle', { cx: X(D.dcs[j][2]), cy: Y(D.dcs[j][1]), r: 13, class: 'focus' }, gA);
+    $('#annot').textContent = text;
+  }
+
+  /* design notes, computed from the live tokens so they always match the page */
+  const lin = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  const lum = (h) => { const n = parseInt(h.replace('#', ''), 16); return 0.2126 * lin((n >> 16 & 255) / 255) + 0.7152 * lin((n >> 8 & 255) / 255) + 0.0722 * lin((n & 255) / 255); };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const TYPE = [['hero', 'Headline figure'], ['2xl', 'Notes title'], ['xl', 'Key figures, brand'], ['lg', 'Units, editorial headings'], ['md', 'Body text and controls'], ['sm', 'Secondary text, labels'], ['xs', 'Map labels']];
+  const ROLES = [['text', 'surface', 4.5, 'Main text'], ['text2', 'surface', 4.5, 'Secondary text'], ['text3', 'bg', 4.5, 'Hints'], ['onaccent', 'accent', 4.5, 'Text on buttons'], ['accent', 'surface', 3, 'Buttons and sliders'],
+    ['good', 'surface', 4.5, 'Cost down'], ['bad', 'surface', 4.5, 'Cost up'], ['text', 'land', 4.5, 'Map labels'], ['flow', 'land', 3, 'Goods flow'], ['plant', 'land', 3, 'Plants'], ['dc', 'land', 3, 'DCs in use'], ['idle', 'land', 3, 'DCs not used, slider track'], ['c1', 'surface', 3, 'Chart bars'], ['c2', 'surface', 3, 'Chart emphasis']];
+  function renderNotes() {
+    const cs = getComputedStyle(root), v = (n) => cs.getPropertyValue('--' + n).trim(), fam = (s) => s.split(',')[0].replace(/"/g, '');
+    $('#dir-name').textContent = DIRS[S.dir].name; $('#dir-about').textContent = DIRS[S.dir].about;
+    const ui = fam(v('font-ui')), disp = fam(v('font-display'));
+    $('#dir-fonts').textContent = disp === ui ? `One family: ${ui === 'system-ui' ? "the phone's own system font" : ui}.` : `Figures and headings in ${disp}; text in ${ui === 'system-ui' ? "the phone's own system font" : ui}.`;
+    $('#type-table').innerHTML = '<tr><th>Step</th><th>Size</th><th>Used for</th></tr>' + TYPE.map(([k, use]) => `<tr><td>${k}</td><td>${v('t-' + k)}</td><td>${use}</td></tr>`).join('');
+    const cell = (m, fg, bg, need) => { const a = v(m + fg), b = v(m + bg), r = ratio(a, b); return `<td><span class="sw" style="background:${a}"></span>${a.toUpperCase()}<br><span class="${r >= need ? 'ok' : 'no'}">${r.toFixed(1)}:1</span></td>`; };
+    $('#role-table').innerHTML = '<tr><th>Role</th><th>Light</th><th>Dark</th></tr>' + ROLES.map(([fg, bg, need, label]) => `<tr><td>${label}<br><small>on ${bg}, needs ${need}:1</small></td>${cell('l-', fg, bg, need)}${cell('d-', fg, bg, need)}</tr>`).join('');
+    const sw = (m) => ['c1', 'c2', 'c3', 'c4'].map(c => `<span class="sw" title="${c}" style="background:${v(m + c)}"></span>`).join('');
+    $('#palette').innerHTML = `Light ${sw('l-')}&nbsp; Dark ${sw('d-')}`;
+  }
+
+  function setDir(d) {
+    S.dir = d;
+    const f = DIRS[d].fonts;
+    if (f && !document.querySelector(`link[href="${f}"]`)) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = f; document.head.append(l); }
+    root.dataset.dir = d; root.dataset.theme = S.theme || DIRS[d].mode;
+    document.querySelectorAll('.tilebar [data-dir]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.dir === d)));
+    const dark = root.dataset.theme === 'dark';
+    $('#tb-name').textContent = DIRS[d].name; $('#theme').textContent = dark ? 'Light' : 'Dark'; $('#theme').setAttribute('aria-label', `Switch to the ${dark ? 'light' : 'dark'} theme`);
+    try { history.replaceState(null, '', '#' + d + (S.theme ? '-' + S.theme : '')); } catch (e) { /* not allowed in some frames */ }
+    renderNotes(); project(); drawNet();
+  }
+  function update() { renderNumbers(); drawNet(); }
+  let tt = 0;
+  function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2800); }
+
+  $('#fr').addEventListener('input', (e) => { S.fi = +e.target.value; update(); });
+  $('#dm').addEventListener('input', (e) => { S.gi = +e.target.value; update(); });
+  document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { S.fi = D.F.indexOf(+c.dataset.f); S.gi = D.G.indexOf(+c.dataset.g); update(); }));
+  $('#motion').addEventListener('click', (e) => { const still = root.classList.toggle('still'); e.currentTarget.setAttribute('aria-pressed', String(still)); e.currentTarget.textContent = still ? 'Play motion' : 'Pause motion'; });
+  $('#copilot').addEventListener('click', () => toast('The copilot lives in the full app. This page previews the look only.'));
+  document.querySelectorAll('.tilebar [data-dir]').forEach(b => b.addEventListener('click', () => setDir(b.dataset.dir)));
+  $('#theme').addEventListener('click', () => { S.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; setDir(S.dir); });
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { if (X) placeLabels(lastOpen); });
+  new ResizeObserver(() => { project(); drawNet(); }).observe($('#mapbox'));
+
+  root.lang = root.lang || 'en';
+  const m = /^#([abc])(?:-(light|dark))?$/.exec(location.hash), chosen = root.getAttribute('data-theme');
+  if (m && m[2]) S.theme = m[2]; else if (chosen === 'light' || chosen === 'dark') S.theme = chosen;
+  renderNumbers(); setDir(m ? m[1] : 'a');
+})();
+</script>

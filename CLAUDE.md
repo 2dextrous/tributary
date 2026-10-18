@@ -19,7 +19,7 @@ A one-page browser app. A business owner enters plants, DCs, demand points, prod
 - `src/styles.css`, `src/body.html`, `src/head.html`: design tokens and markup.
 - `tests/engine.test.js`: known-answer tests. Every engine change gets a test.
 - `tests/worker.test.js`: checks the host matches the engine and that every reply survives a structured clone.
-- `design/`: redesign research, not part of the built page. `diagnosis.md` and `test-script.md` (Phase 1), style tiles (Phase 2), and the audit scripts in `design/tools/` that produced every number.
+- `design/`: redesign research, not part of the built page. `diagnosis.md` and `test-script.md` (Phase 1); `directions.md` and the style tiles in `tiles/index.html` (Phase 2, rebuilt from real engine output with `node design/tools/build_tiles.js`); and the audit scripts in `design/tools/` that produced every number.
 
 ## Engine contracts (ask before changing a shape)
 - `forecast(data)` returns `series["custId|skuId"] = {fc: {smart, naive}[52], sigma, wmape, bias, pred}`, `products[skuId] = {wmape, bias, fva}`, `seasonal`.
